@@ -1,0 +1,20 @@
+{
+  "name": "nexus-image-pipeline-tests",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Black-box Playwright tests for the Nexus Campaigns image ingestion pipeline (vault filesystem + dashboard UI).",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report",
+    "clean": "tsx scripts/clean.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "tsx": "^4.19.0"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3"
+  }
+}
