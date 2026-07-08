@@ -47,15 +47,30 @@ npm run clean     # wipe NEXUS_PATH (service uninstall + dir) and VAULT_PATH
 
 - **`tests/image-processing.spec.ts`** — full pipeline: copies `fixtures/test-images/sword-test.jpg` into `00-Inbox/images` under a random name, polls (no way to force-trigger the daemon — a 60s runtime loop feeding a 900s vision-agent interval) until it's renamed and a draft note appears in `01-Processing`, then asserts frontmatter invariants, body sections, and that the dashboard's note view matches. Slow — a live backlog can push this out 50+ minutes.
 - **`tests/inbox-upload.spec.ts`** — fast, UI-only: proves the two `/gm/inbox` upload entry points (Upload button, drag-and-drop) land the file in `00-Inbox/images` and show up in the inbox listing. Does **not** wait for the vision daemon — the full round-trip is already covered once by `image-processing.spec.ts`.
+- **`tests/bestiary-classification.spec.ts`** — second-stage pipeline: after the vision draft lands, polls the *same* note for the classification-agent (LocalRouter `localhost:8080`) to enrich tags/type, then asserts a specific tag set + bestiary `type`, and that the entity shows on `/gm/bestiary`. Reference/template for scenario tests — see below.
 
 ## Helpers
 
 - `tests/helpers/config.ts` — env-driven paths/timeouts.
-- `tests/helpers/vault-utils.ts` — directory snapshotting/diffing, frontmatter parsing (`gray-matter`), `waitForSlugNote` (polls for the daemon's renamed image + draft note), `assertDraftInvariants` (structural checks only — never asserts on LLM-generated prose), cleanup of files created during a run.
+- `tests/helpers/vault-utils.ts` — directory snapshotting/diffing, frontmatter parsing (`gray-matter`), `waitForSlugNote` (polls for the daemon's renamed image + draft note), `pollNoteUntil` (re-polls one known note for a second-stage agent's enrichment), `assertDraftInvariants` (structural checks only — never asserts on LLM-generated prose), `copyForInspection` (saves a failing run's files to `tmp/` before cleanup deletes them), cleanup of files created during a run.
 - `tests/helpers/dashboard-ui.ts` — dashboard page interactions: open a note by UUID, assert note view matches frontmatter, upload via button, upload via drag-and-drop.
+
+## Adding a new image/scenario test
+
+Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
+
+1. Add the fixture image to `tests/fixtures/test-images/`.
+2. `test.describe.serial(...)` with a `createdPaths: string[]`, baselines snapshotted in `beforeAll` via `snapshotDir(INBOX_IMAGES_DIR)` / `snapshotDir(PROCESSING_DIR)`.
+3. Step 1 — drop the fixture: `copyFixtureWithRandomName('your-image.jpg')`, push `destPath` onto `createdPaths`.
+4. Step 2 — wait for the vision draft: `waitForSlugNote(randomName, inboxBaseline, processingBaseline)`, push `notePath`/`imagePath`, then `assertDraftInvariants(data, noteId)` for the structural checks every draft must pass.
+5. Step 3 (if your scenario needs second-stage enrichment — tags beyond the image category, or a refined `type`) — `pollNoteUntil(notePath, predicate, describe, { timeout })`. Give it a real ceiling below the 90min test timeout (20min is the going rate) so a stuck/offline agent fails fast with a readable message instead of eating the whole budget silently.
+6. Assert your scenario's expectations: exact tags via `toContain`, `type` against the relevant vocab (e.g. `BESTIARY_TYPES`), dashboard visibility via `page.goto('/gm/<pillar>')` + `page.getByText(noteId)`.
+7. `test.afterEach(async ({}, testInfo) => { if (testInfo.status !== testInfo.expectedStatus) await copyForInspection(createdPaths, testInfo.title); })` — copies whatever the run created into `tmp/<timestamp>_<test-title>/` for manual review *before* `afterAll` deletes the originals. Always add this for a new scenario test; a failed classification/tagging assertion is exactly the case you want the artifacts for.
+8. `afterAll` → `cleanupCreatedFiles(createdPaths)`, unconditional, same as the existing specs.
 
 ## Notes / gotchas
 
 - Tests run serial, single worker, no retries — they share one real vault and must not race each other over the same inbox/processing folders.
 - `afterAll` hooks delete only the specific files a run created (`cleanupCreatedFiles`) — never folders, to avoid OneDrive Cloud-Files placeholder issues.
-- `expect.timeout` is 15s by default (fails fast on a bad selector); only `waitForSlugNote`'s own `.toPass()` gets the long poll budget explicitly.
+- `expect.timeout` is 15s by default (fails fast on a bad selector); only the long polls (`waitForSlugNote`, `pollNoteUntil`) get the extended budget explicitly.
+- Classification-agent enrichment depends on LocalRouter (`localhost:8080`) being up — if it's offline the agent logs a WARN and skips, and a `pollNoteUntil` waiting on tags/type will time out. That's a real signal, not flakiness — check `nexus/agents/runtime/state/logs/automation.log` for `LocalRouter offline`.

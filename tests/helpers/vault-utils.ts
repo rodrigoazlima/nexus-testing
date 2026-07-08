@@ -11,6 +11,11 @@ const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures', 'test-images');
 // this is what tags[0] must be, independent of the broader `type:` entity enum.
 export const IMAGE_CATEGORY_VOCAB = ['portrait', 'body', 'battlemap', 'scene', 'token'] as const;
 
+// Entity types the dashboard's Bestiary pillar shows (system/dashboard/src/lib/pillars.ts).
+// Vision only ever assigns npc/location placeholders — reaching one of these
+// requires the classification-agent's second-stage type inference to run.
+export const BESTIARY_TYPES = ['creature', 'monster', 'encounter'] as const;
+
 export interface FrontmatterData {
   id: string;
   uuid: string;
@@ -185,4 +190,50 @@ export async function cleanupCreatedFiles(paths: string[]): Promise<void> {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
   }
+}
+
+/**
+ * Re-reads a note already located by waitForSlugNote until `predicate(data)`
+ * holds — for waiting on a second-stage agent (e.g. classification) to
+ * enrich a draft the vision agent already wrote. Same poll shape as
+ * waitForSlugNote, but against one known path instead of a directory diff.
+ */
+export async function pollNoteUntil(
+  notePath: string,
+  predicate: (data: FrontmatterData) => boolean,
+  describe: (data: FrontmatterData | undefined) => string,
+  opts: { timeout?: number; intervals?: number[] } = {}
+): Promise<{ data: FrontmatterData; content: string }> {
+  let last: { data: FrontmatterData; content: string } | undefined;
+
+  await expect(async () => {
+    last = await readFrontmatter(notePath);
+    expect(predicate(last.data), describe(last.data)).toBe(true);
+  }).toPass({
+    timeout: opts.timeout ?? POLL_TIMEOUT_MS,
+    intervals: opts.intervals ?? [POLL_INTERVAL_MS],
+  });
+
+  return last!;
+}
+
+const INSPECT_DIR = path.join(__dirname, '..', '..', 'tmp');
+
+/**
+ * Copies still-existing files (note/image paths a test pushed onto its
+ * createdPaths list) into <repo root>/tmp/<label> for manual review — call
+ * from an afterEach on failure, before afterAll's cleanupCreatedFiles runs.
+ */
+export async function copyForInspection(paths: string[], label: string): Promise<string> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const dir = path.join(INSPECT_DIR, `${stamp}_${label.replace(/[^a-z0-9]+/gi, '-')}`);
+  await fs.mkdir(dir, { recursive: true });
+  for (const p of paths) {
+    try {
+      await fs.copyFile(p, path.join(dir, path.basename(p)));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+  return dir;
 }
