@@ -2,7 +2,7 @@
 
 Black-box Playwright tests for the Nexus Campaigns image ingestion pipeline: dropping/uploading an image into the vault's `00-Inbox/images`, waiting for the real vision-agent daemon to rename it and write an enriched draft note into `01-Processing`, and checking both the vault filesystem and the dashboard UI reflect that result.
 
-These tests exercise the **real** daemon (out of scope, lives in `C:\testing\nexus`) and a **real** vault (`C:\testing\vault`). No mocks, no fixtures/teardown isolation between runs.
+These tests exercise the **real** daemon (out of scope, lives at `NEXUS_PATH`) and a **real** vault (`VAULT_PATH`). No mocks, no fixtures/teardown isolation between runs.
 
 ## Setup
 
@@ -15,12 +15,12 @@ Env vars (see `tests/helpers/config.ts`):
 
 | Var | Default | Purpose |
 |---|---|---|
-| `VAULT_PATH` | `C:\testing\vault` | root of the Obsidian vault under test |
+| `VAULT_PATH` | `./.testing/vault` | root of the Obsidian vault under test |
 | `DASHBOARD_URL` | `http://localhost:48080` | dashboard base URL (Playwright `baseURL`) |
 | `POLL_TIMEOUT_MS` | `85 * 60_000` (85 min) | how long to poll the vault for the daemon's output |
 | `POLL_INTERVAL_MS` | `15_000` | poll interval while waiting |
 | `TEST_TIMEOUT_MS` | `90 * 60_000` (90 min) | Playwright per-test timeout |
-| `NEXUS_PATH` | `C:\testing\nexus` | Nexus codebase/service install used by `tests/global-setup.ts` / `tests/global-teardown.ts` (not read by the specs themselves). Must be NTFS — `setup-service.ps1` links agents via junctions, unsupported on exFAT. |
+| `NEXUS_PATH` | `./.testing/nexus` | Nexus codebase/service install used by `tests/global-setup.ts` / `tests/global-teardown.ts` (not read by the specs themselves). Must be NTFS — `setup-service.ps1` links agents via junctions, unsupported on exFAT. |
 
 ## Running
 

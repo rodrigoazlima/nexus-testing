@@ -4,8 +4,9 @@ import path from 'node:path';
 import { VAULT_PATH } from './config';
 
 // NTFS required — setup-service.ps1 links agents via junctions, which exFAT
-// (e.g. D: on this box) doesn't support ("Incorrect function" on creation).
-export const NEXUS_PATH = process.env.NEXUS_PATH ?? 'C:\\testing\\nexus';
+// doesn't support ("Incorrect function" on creation). Default resolves under
+// cwd so it lands on whatever drive the repo itself is checked out on.
+export const NEXUS_PATH = process.env.NEXUS_PATH ?? path.resolve('.testing', 'nexus');
 export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
 export const BRANCH = 'master';
 export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');

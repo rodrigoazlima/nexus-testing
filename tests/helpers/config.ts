@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export const VAULT_PATH = process.env.VAULT_PATH ?? 'C:\\testing\\vault';
+export const VAULT_PATH = process.env.VAULT_PATH ?? path.resolve('.testing', 'vault');
 
 export const DASHBOARD_URL = process.env.DASHBOARD_URL ?? 'http://localhost:48080';
 
