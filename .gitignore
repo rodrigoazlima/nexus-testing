@@ -147,8 +147,11 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+package-lock.json
 
 # Default vault/nexus install dirs (tests/helpers/config.ts, nexus-install.ts)
 .testing/
+nexus/
+vault/
 
-package-lock.json
+
