@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { VAULT_PATH } from './config';
+import { ROOT_DIR, VAULT_PATH } from './config';
 
 // NTFS required — setup-service.ps1 links agents via junctions, which exFAT
 // doesn't support ("Incorrect function" on creation). Default resolves under
-// cwd so it lands on whatever drive the repo itself is checked out on.
-export const NEXUS_PATH = path.resolve(process.env.NEXUS_PATH ?? path.join('.testing', 'nexus'));
+// ROOT_DIR (not cwd) so it lands on whatever drive the repo itself is
+// checked out on, regardless of invocation directory.
+export const NEXUS_PATH = path.resolve(process.env.NEXUS_PATH ?? path.join(ROOT_DIR, '.testing', 'nexus'));
 export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
 export const BRANCH = 'master';
 export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');

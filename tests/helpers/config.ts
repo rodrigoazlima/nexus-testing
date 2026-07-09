@@ -1,6 +1,10 @@
 import path from 'node:path';
 
-export const VAULT_PATH = path.resolve(process.env.VAULT_PATH ?? path.join('.testing', 'vault'));
+// Anchored to repo root (not process.cwd()) so the default is stable
+// regardless of where npm/playwright is invoked from.
+export const ROOT_DIR = path.resolve(__dirname, '..', '..');
+
+export const VAULT_PATH = path.resolve(process.env.VAULT_PATH ?? path.join(ROOT_DIR, '.testing', 'vault'));
 
 export const DASHBOARD_URL = process.env.DASHBOARD_URL ?? 'http://localhost:48080';
 
