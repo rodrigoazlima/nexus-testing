@@ -30,9 +30,9 @@ npm run clean     # wipe NEXUS_PATH + VAULT_PATH by hand
 ## Config that matters
 
 - `playwright.config.ts`: `workers: 3`, `fullyParallel: false` — spec files run parallel, tests inside one file stay ordered. Accepted risk: parallel specs share one vault, cross-match is theoretically possible in `waitForSlugNote`.
-- `POLL_INTERVAL_MS` (default 5s), `POLL_TIMEOUT_MS` (default 85min), `TEST_TIMEOUT_MS` (default 90min) — env-overridable, see `tests/helpers/config.ts`.
-- `expect.timeout` is 15s — only the two poll helpers get the long budget explicitly, on purpose (bad selector should fail in seconds, not 90min).
+- `POLL_INTERVAL_MS` (default 5s), `POLL_TIMEOUT_MS` (default 10min), `TEST_TIMEOUT_MS` (default 10min) — env-overridable, see `tests/helpers/config.ts`. Shortened from 85/90min per 2026-07-09 perf review to fail fast while the `.env.local`-wipe hypothesis gets confirmed.
+- `expect.timeout` is 15s — only the two poll helpers get the long budget explicitly, on purpose (bad selector should fail in seconds, not 10min).
 
 ## Adding a scenario test
 
-Copy `tests/bestiary-classification.spec.ts`. Order: drop fixture → `waitForSlugNote` + `assertDraftInvariants` → optional `pollNoteUntil` for second-stage enrichment (give it a real ceiling, don't inherit the full 90min) → scenario assertions → dashboard visibility check → `afterEach` copy-on-failure (`copyForInspection`) → `afterAll` cleanup (`cleanupCreatedFiles`).
+Copy `tests/bestiary-classification.spec.ts`. Order: drop fixture → `waitForSlugNote` + `assertDraftInvariants` → optional `pollNoteUntil` for second-stage enrichment (give it a real ceiling, don't inherit the full 10min) → scenario assertions → dashboard visibility check → `afterEach` copy-on-failure (`copyForInspection`) → `afterAll` cleanup (`cleanupCreatedFiles`).

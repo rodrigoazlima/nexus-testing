@@ -1,12 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Tests wait for the real vault-knowledge-factory daemon (60s runtime loop,
-// 900s vision-agent interval) — there is no in-scope way to force-trigger it,
-// so the per-test timeout must comfortably exceed one full vision cycle.
-// A live run (2026-07-07) showed the daemon working through a large real
-// RAW/ backlog first — three ~17min batches ran before it reached a freshly
-// dropped file, so 25min wasn't enough. Budget generously.
-const TEST_TIMEOUT_MS = Number(process.env.TEST_TIMEOUT_MS ?? 90 * 60_000);
+// Shortened to 10min (from 90min) per 2026-07-09 perf review: the 2026-07-09
+// live run burned the full 89min budget and still failed on an empty queue
+// (no backlog excuse), suspected cause is .env.local getting wiped by
+// -CleanInstall. A short ceiling fails fast so that's cheap to confirm.
+const TEST_TIMEOUT_MS = Number(process.env.TEST_TIMEOUT_MS ?? 10 * 60_000);
 
 export default defineConfig({
   testDir: './tests',

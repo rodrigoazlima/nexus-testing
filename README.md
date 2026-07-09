@@ -17,9 +17,9 @@ Env vars (see `tests/helpers/config.ts`):
 |---|---|---|
 | `VAULT_PATH` | `./.testing/vault` | root of the Obsidian vault under test |
 | `DASHBOARD_URL` | `http://localhost:48080` | dashboard base URL (Playwright `baseURL`) |
-| `POLL_TIMEOUT_MS` | `85 * 60_000` (85 min) | how long to poll the vault for the daemon's output |
+| `POLL_TIMEOUT_MS` | `10 * 60_000` (10 min) | how long to poll the vault for the daemon's output |
 | `POLL_INTERVAL_MS` | `5_000` | poll interval while waiting |
-| `TEST_TIMEOUT_MS` | `90 * 60_000` (90 min) | Playwright per-test timeout |
+| `TEST_TIMEOUT_MS` | `10 * 60_000` (10 min) | Playwright per-test timeout |
 | `NEXUS_PATH` | `./.testing/nexus` | Nexus codebase/service install used by `tests/global-setup.ts` / `tests/global-teardown.ts` (not read by the specs themselves). Must be NTFS — `setup-service.ps1` links agents via junctions, unsupported on exFAT. |
 
 ## Running
@@ -65,7 +65,7 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 2. `test.describe.serial(...)` with a `createdPaths: string[]`, baselines snapshotted in `beforeAll` via `snapshotDir(INBOX_IMAGES_DIR)` / `snapshotDir(PROCESSING_DIR)`.
 3. Step 1 — drop the fixture: `copyFixtureWithRandomName('your-image.jpg')`, push `destPath` onto `createdPaths`.
 4. Step 2 — wait for the vision draft: `waitForSlugNote(randomName, inboxBaseline, processingBaseline)`, push `notePath`/`imagePath`, then `assertDraftInvariants(data, noteId)` for the structural checks every draft must pass.
-5. Step 3 (if your scenario needs second-stage enrichment — tags beyond the image category, or a refined `type`) — `pollNoteUntil(notePath, predicate, describe, { timeout })`. Give it a real ceiling below the 90min test timeout (20min is the going rate) so a stuck/offline agent fails fast with a readable message instead of eating the whole budget silently.
+5. Step 3 (if your scenario needs second-stage enrichment — tags beyond the image category, or a refined `type`) — `pollNoteUntil(notePath, predicate, describe, { timeout })`. Give it a real ceiling below the 10min test timeout (3min is the going rate) so a stuck/offline agent fails fast with a readable message instead of eating the whole budget silently.
 6. Assert your scenario's expectations: exact tags via `toContain`, `type` against the relevant vocab (e.g. `BESTIARY_TYPES`), dashboard visibility via `page.goto('/gm/<pillar>')` + `page.getByText(noteId)`.
 7. `test.afterEach(async ({}, testInfo) => { if (testInfo.status !== testInfo.expectedStatus) await copyForInspection(createdPaths, testInfo.title); })` — copies whatever the run created into `tmp/<timestamp>_<test-title>/` for manual review *before* `afterAll` deletes the originals. Always add this for a new scenario test; a failed classification/tagging assertion is exactly the case you want the artifacts for.
 8. `afterAll` → `cleanupCreatedFiles(createdPaths)`, unconditional, same as the existing specs.

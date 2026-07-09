@@ -57,10 +57,11 @@ test.describe.serial('Bestiary classification: skeletor portrait -> creature/mon
       assertDraftInvariants(visionData, noteId);
     });
 
-    // ponytail: 20min ceiling, not the full 85min POLL_TIMEOUT_MS — this
-    // agent is due immediately after a clean install same as vision, and a
-    // tight budget fails fast (LocalRouter down, prompt drift) instead of
-    // silently eating most of the 90min test timeout.
+    // ponytail: 3min ceiling (shortened from 20min per 2026-07-09 perf
+    // review, alongside the 10min POLL_TIMEOUT_MS/TEST_TIMEOUT_MS shrink) —
+    // this agent is due immediately after a clean install same as vision,
+    // and a tight budget fails fast (LocalRouter down, prompt drift) instead
+    // of silently eating the rest of the 10min test timeout.
     const { data: enrichedData } = await test.step(
       'wait for the classification agent to enrich tags and infer a bestiary type',
       () =>
@@ -72,7 +73,7 @@ test.describe.serial('Bestiary classification: skeletor portrait -> creature/mon
           (data) =>
             `Still waiting for classification. type="${data?.type}" tags=[${(data?.tags ?? []).join(', ')}] ` +
             `— want type in [${BESTIARY_TYPES.join(', ')}] and tags including [${EXPECTED_TAGS.join(', ')}].`,
-          { timeout: 20 * 60_000 }
+          { timeout: 3 * 60_000 }
         )
     );
 

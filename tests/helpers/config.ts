@@ -8,10 +8,10 @@ export const VAULT_PATH = path.resolve(process.env.VAULT_PATH ?? path.join(ROOT_
 
 export const DASHBOARD_URL = process.env.DASHBOARD_URL ?? 'http://localhost:48080';
 
-// Real backlog contention observed 2026-07-07: the daemon worked through a
-// large RAW/ queue for 3+ cycles (~50min) before reaching a freshly dropped
-// file. Budget under the 90min Playwright test timeout, with margin.
-export const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS ?? 85 * 60_000);
+// Shortened to 10min (from 85min) per 2026-07-09 perf review: confirm/rule
+// out the .env.local-wipe hypothesis fast instead of burning a full backlog
+// budget on every run. Budget under the 10min Playwright test timeout.
+export const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS ?? 10 * 60_000);
 // Tighter than the daemon's own cadence on purpose: cost is one extra fs
 // snapshot/read, and it shortens how long a passing test waits after the
 // real state already flipped.
