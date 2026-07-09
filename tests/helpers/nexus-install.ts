@@ -12,6 +12,29 @@ export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
 export const BRANCH = 'master';
 export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');
 
+// Guards clearInstall/installFresh (global-setup, global-teardown, clean.ts)
+// against overlapping each other — e.g. `npm run clean` fired while a test
+// run's global-setup is mid-clone. Test workers never touch this lock: they
+// don't call clearInstall/installFresh, only the three entry points above do.
+const LOCK_PATH = path.join(ROOT_DIR, '.testing', '.install.lock');
+
+export function withInstallLock<T>(label: string, fn: () => T): T {
+  if (fs.existsSync(LOCK_PATH)) {
+    const heldBy = fs.readFileSync(LOCK_PATH, 'utf-8').trim();
+    throw new Error(
+      `${label}: install/uninstall already in progress (pid ${heldBy || '?'}, lock: ${LOCK_PATH}). ` +
+        `Refusing to run concurrently — wait for it to finish, or delete the lock file if it's stale.`
+    );
+  }
+  fs.mkdirSync(path.dirname(LOCK_PATH), { recursive: true });
+  fs.writeFileSync(LOCK_PATH, String(process.pid));
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(LOCK_PATH, { force: true });
+  }
+}
+
 function run(cmd: string, args: string[], input?: string): void {
   if (input !== undefined) {
     execFileSync(cmd, args, { stdio: ['pipe', 'inherit', 'inherit'], input });

@@ -24,10 +24,13 @@ export default defineConfig({
   expect: {
     timeout: 15_000,
   },
-  // Tests share one real vault (no fixtures/teardown isolation between runs),
-  // so they must not run concurrently against the same inbox/processing folders.
+  // Tests share one real vault (no fixtures/teardown isolation between runs).
+  // Running spec FILES concurrently is a deliberate accepted risk (baseline
+  // diffing in waitForSlugNote can cross-match another test's renamed file if
+  // two specs race close together) — keep fullyParallel:false so tests
+  // *within* a file still run in written order (matches describe.serial).
   fullyParallel: false,
-  workers: 1,
+  workers: 3,
   retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {

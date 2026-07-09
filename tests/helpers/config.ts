@@ -12,7 +12,10 @@ export const DASHBOARD_URL = process.env.DASHBOARD_URL ?? 'http://localhost:4808
 // large RAW/ queue for 3+ cycles (~50min) before reaching a freshly dropped
 // file. Budget under the 90min Playwright test timeout, with margin.
 export const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS ?? 85 * 60_000);
-export const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 15_000);
+// Tighter than the daemon's own cadence on purpose: cost is one extra fs
+// snapshot/read, and it shortens how long a passing test waits after the
+// real state already flipped.
+export const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5_000);
 
 export const INBOX_IMAGES_DIR = path.join(VAULT_PATH, '00-Inbox', 'images');
 export const PROCESSING_DIR = path.join(VAULT_PATH, '01-Processing');
