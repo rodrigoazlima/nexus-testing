@@ -18,7 +18,7 @@ Env vars (see `tests/helpers/config.ts`):
 | `VAULT_PATH` | `./.testing/vault` | root of the Obsidian vault under test |
 | `DASHBOARD_URL` | `http://localhost:48080` | dashboard base URL (Playwright `baseURL`) |
 | `POLL_TIMEOUT_MS` | `85 * 60_000` (85 min) | how long to poll the vault for the daemon's output |
-| `POLL_INTERVAL_MS` | `15_000` | poll interval while waiting |
+| `POLL_INTERVAL_MS` | `5_000` | poll interval while waiting |
 | `TEST_TIMEOUT_MS` | `90 * 60_000` (90 min) | Playwright per-test timeout |
 | `NEXUS_PATH` | `./.testing/nexus` | Nexus codebase/service install used by `tests/global-setup.ts` / `tests/global-teardown.ts` (not read by the specs themselves). Must be NTFS — `setup-service.ps1` links agents via junctions, unsupported on exFAT. |
 
@@ -42,6 +42,8 @@ npm run clean     # wipe NEXUS_PATH (service uninstall + dir) and VAULT_PATH
 ```
 
 `scripts/clean.ts` does not run automatically — use it to reset the machine by hand between manual runs.
+
+`clearInstall`/`installFresh` (global-setup, global-teardown, `clean.ts`) all take a lock file at `.testing/.install.lock` — whichever runs first wins, the other two throw immediately instead of racing the same install dir. Stale lock (killed process) → delete the file by hand.
 
 ## Tests
 
@@ -70,7 +72,7 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 
 ## Notes / gotchas
 
-- Tests run serial, single worker, no retries — they share one real vault and must not race each other over the same inbox/processing folders.
+- 3 workers, `fullyParallel: false` — spec *files* run in parallel, tests *within* a file stay in written order (`describe.serial`). Accepted risk: concurrent specs share one real vault, so `waitForSlugNote`'s baseline-diff can in theory cross-match another spec's renamed file if two drops land close together. No retries.
 - `afterAll` hooks delete only the specific files a run created (`cleanupCreatedFiles`) — never folders, to avoid OneDrive Cloud-Files placeholder issues.
 - `expect.timeout` is 15s by default (fails fast on a bad selector); only the long polls (`waitForSlugNote`, `pollNoteUntil`) get the extended budget explicitly.
 - Classification-agent enrichment depends on LocalRouter (`localhost:8080`) being up — if it's offline the agent logs a WARN and skips, and a `pollNoteUntil` waiting on tags/type will time out. That's a real signal, not flakiness — check `nexus/agents/runtime/state/logs/automation.log` for `LocalRouter offline`.
