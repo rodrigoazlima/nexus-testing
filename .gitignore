@@ -155,4 +155,7 @@ package-lock.json
 # Failed-test file copies (tests/helpers/vault-utils.ts copyForInspection)
 tmp/
 
+# graphify knowledge-graph output
+graphify-out/
+
 
