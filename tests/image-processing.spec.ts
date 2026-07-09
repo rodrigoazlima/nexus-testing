@@ -31,7 +31,7 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
   });
 
   test('renames dropped sword image and produces an enriched draft note', async ({ page }) => {
-    const { destPath, randomName } = await test.step('drop sword image under a random name', async () => {
+    const { randomName } = await test.step('drop sword image under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('sword-test.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
