@@ -43,10 +43,26 @@ function run(cmd: string, args: string[], input?: string): void {
   }
 }
 
+// setup-service.ps1 installs a Windows service, which silently fails deep
+// inside the script without an elevated shell (2026-07-09 perf review,
+// finding #5: the resulting error doesn't point at "run as admin"). Check
+// up front and throw a clear error instead.
+function assertElevated(): void {
+  try {
+    execFileSync('net', ['session'], { stdio: 'ignore' });
+  } catch {
+    throw new Error(
+      `${SETUP_SCRIPT} installs a Windows service, which requires an elevated shell. ` +
+        `Re-run from PowerShell started as Administrator.`
+    );
+  }
+}
+
 /** Uninstalls the service (if present) and wipes the codebase dir. */
 export function clearInstall(): void {
   if (fs.existsSync(SETUP_SCRIPT)) {
     console.log('uninstalling existing service');
+    assertElevated();
     run('pwsh', ['-File', SETUP_SCRIPT, '-Uninstall']);
   }
   if (fs.existsSync(NEXUS_PATH)) {
@@ -66,10 +82,54 @@ export function installFresh(): void {
   run('git', ['config', '--global', '--add', 'safe.directory', NEXUS_PATH.replace(/\\/g, '/')]);
 
   console.log(`running clean install (vault: ${VAULT_PATH})`);
+  assertElevated();
   // -CleanInstall gates on an interactive `Read-Host "Type 'yes' to confirm"`
   // with no bypass flag — feed it via stdin so this works non-interactively.
   // -VaultRoot must be explicit: without it setup-service.ps1 defaults to
   // <ProjectRoot>\.knowledge-base, not VAULT_PATH — the daemon would then
   // watch a vault the tests never touch and every test would time out.
   run('pwsh', ['-File', SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH], 'yes\n');
+}
+
+const ENV_LOCAL_SKIP_DIRS = new Set(['node_modules', '.git']);
+
+function findEnvLocalFiles(dir: string, depth = 0): string[] {
+  if (depth > 6) return [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found: string[] = [];
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (ENV_LOCAL_SKIP_DIRS.has(entry.name)) continue;
+      found.push(...findEnvLocalFiles(path.join(dir, entry.name), depth + 1));
+    } else if (entry.name === '.env.local') {
+      found.push(path.join(dir, entry.name));
+    }
+  }
+  return found;
+}
+
+/**
+ * Cheap post-install check for the 2026-07-09 perf review's suspected root
+ * cause: -CleanInstall wipes every .env.local and nothing recreates them. If
+ * vision-agent's credentials live in one, every scenario test times out
+ * silently instead of erroring. Not confirmed, so this warns rather than
+ * failing the run — see performance-review-notes.md, "Suspected root cause".
+ */
+export function warnIfEnvLocalMissing(): void {
+  const found = findEnvLocalFiles(NEXUS_PATH);
+  if (found.length === 0) {
+    console.warn(
+      `[global-setup] WARNING: no .env.local found anywhere under ${NEXUS_PATH} after install. ` +
+        `-CleanInstall wipes .env.local and never recreates it — if the vision-agent's ` +
+        `credentials live there, every scenario test will silently time out waiting for a ` +
+        `daemon that can't authenticate.`
+    );
+  } else {
+    console.log(`[global-setup] found ${found.length} .env.local file(s) under ${NEXUS_PATH}`);
+  }
 }

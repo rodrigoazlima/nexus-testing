@@ -11,6 +11,8 @@ npm install
 cp .env.example .env   # then edit as needed
 ```
 
+**Run from an elevated shell.** `npm test`/`npm run clean` shell out to `setup-service.ps1`, which installs a Windows service — without admin rights it fails deep inside the script with an error that doesn't mention elevation. `clearInstall`/`installFresh` (`tests/helpers/nexus-install.ts`) now check up front and throw a clear "re-run as Administrator" error instead.
+
 Env vars (see `tests/helpers/config.ts`):
 
 | Var | Default | Purpose |
@@ -26,12 +28,15 @@ Env vars (see `tests/helpers/config.ts`):
 
 ```
 npm test          # global setup (fresh install) -> full suite -> global teardown (uninstall)
+npm run test:unit # fast unit tests for setup-service.ps1's argument construction (no real install)
 npm run report    # open the last HTML report
 ```
 
+`npm run test:unit` runs `tests/helpers/nexus-install.test.ts` on Node's built-in test runner (via `tsx`, not Playwright — `.test.ts` is deliberately a different suffix from `.spec.ts` so Playwright's `testMatch` never picks it up). It mocks `execFileSync` to assert the exact `git`/`setup-service.ps1` arguments and stdin `clearInstall`/`installFresh` send — including the elevation check and the `.env.local` sanity check — without cloning, installing a service, or requiring an elevated shell.
+
 `npm test` drives the full lifecycle through Playwright's own `globalSetup`/`globalTeardown` hooks (wired in `playwright.config.ts`), both plain TypeScript:
 
-1. **`tests/global-setup.ts`** — clears any dirty/leftover install (uninstalls the service if present, removes `NEXUS_PATH`), clones `NexusCampaigns` fresh, then runs `setup-service.ps1 -CleanInstall`. Same steps as `custom-install.ps1`, kept as our own TS copy rather than invoking that script directly. `setup-service.ps1` itself is the target repo's own installer, so it's still shelled out to as a subprocess.
+1. **`tests/global-setup.ts`** — clears any dirty/leftover install (uninstalls the service if present, removes `NEXUS_PATH`), clones `NexusCampaigns` fresh, then runs `setup-service.ps1 -CleanInstall`. Same steps as `custom-install.ps1`, kept as our own TS copy rather than invoking that script directly. `setup-service.ps1` itself is the target repo's own installer, so it's still shelled out to as a subprocess. Afterwards, warns (doesn't fail the run) if no `.env.local` file exists anywhere under `NEXUS_PATH` — `-CleanInstall` wipes them and nothing recreates them, a suspected cause of silent vision-agent failures (see `performance-review-notes.md`).
 2. **the spec suite** — runs in full, against the freshly installed dashboard/daemon and `VAULT_PATH`.
 3. **`tests/global-teardown.ts`** — uninstalls the service and wipes `NEXUS_PATH`/`VAULT_PATH` (same steps as `scripts/clean.ts`), leaving `.testing` clean for the next run.
 
@@ -54,7 +59,7 @@ npm run clean     # wipe NEXUS_PATH (service uninstall + dir) and VAULT_PATH
 ## Helpers
 
 - `tests/helpers/config.ts` — env-driven paths/timeouts.
-- `tests/helpers/vault-utils.ts` — directory snapshotting/diffing, frontmatter parsing (`gray-matter`), `waitForSlugNote` (polls for the daemon's renamed image + draft note), `pollNoteUntil` (re-polls one known note for a second-stage agent's enrichment), `assertDraftInvariants` (structural checks only — never asserts on LLM-generated prose), `copyForInspection` (saves a failing run's files to `tmp/` before cleanup deletes them), cleanup of files created during a run.
+- `tests/helpers/vault-utils.ts` — directory snapshotting/diffing, frontmatter parsing (`gray-matter`), `waitForSlugNote` (polls for the daemon's renamed image + draft note), `pollNoteUntil` (re-polls one known note for a second-stage agent's enrichment), `assertDraftInvariants` (structural checks only — never asserts on LLM-generated prose), `copyForInspection` (saves a failing run's files to `tmp/` before cleanup deletes them), `copyNexusDiagnostics` (saves `NEXUS_PATH`'s `automation.log` + `system/state/*.json` into the same `tmp/` dir — the only way to see what the daemon was doing, since `global-teardown.ts` wipes `NEXUS_PATH` right after the run), cleanup of files created during a run.
 - `tests/helpers/dashboard-ui.ts` — dashboard page interactions: open a note by UUID, assert note view matches frontmatter, upload via button, upload via drag-and-drop.
 
 ## Adding a new image/scenario test
@@ -67,7 +72,7 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 4. Step 2 — wait for the vision draft: `waitForSlugNote(randomName, inboxBaseline, processingBaseline)`, push `notePath`/`imagePath`, then `assertDraftInvariants(data, noteId)` for the structural checks every draft must pass.
 5. Step 3 (if your scenario needs second-stage enrichment — tags beyond the image category, or a refined `type`) — `pollNoteUntil(notePath, predicate, describe, { timeout })`. Give it a real ceiling below the 10min test timeout (3min is the going rate) so a stuck/offline agent fails fast with a readable message instead of eating the whole budget silently.
 6. Assert your scenario's expectations: exact tags via `toContain`, `type` against the relevant vocab (e.g. `BESTIARY_TYPES`), dashboard visibility via `page.goto('/gm/<pillar>')` + `page.getByText(noteId)`.
-7. `test.afterEach(async ({}, testInfo) => { if (testInfo.status !== testInfo.expectedStatus) await copyForInspection(createdPaths, testInfo.title); })` — copies whatever the run created into `tmp/<timestamp>_<test-title>/` for manual review *before* `afterAll` deletes the originals. Always add this for a new scenario test; a failed classification/tagging assertion is exactly the case you want the artifacts for.
+7. `test.afterEach(async ({}, testInfo) => { if (testInfo.status !== testInfo.expectedStatus) { const dir = await copyForInspection(createdPaths, testInfo.title); await copyNexusDiagnostics(dir); } })` — copies whatever the run created, plus `NEXUS_PATH`'s daemon log/state JSON, into `tmp/<timestamp>_<test-title>/` for manual review *before* `afterAll`/global teardown deletes the originals. Always add this for a new scenario test; a failed classification/tagging assertion (or a timeout) is exactly the case you want the artifacts for.
 8. `afterAll` → `cleanupCreatedFiles(createdPaths)`, unconditional, same as the existing specs.
 
 ## Notes / gotchas

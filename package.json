@@ -5,6 +5,7 @@
   "description": "Black-box Playwright tests for the Nexus Campaigns image ingestion pipeline (vault filesystem + dashboard UI).",
   "scripts": {
     "test": "playwright test",
+    "test:unit": "node --import tsx --test tests/helpers/*.test.ts",
     "report": "playwright show-report",
     "clean": "tsx scripts/clean.ts",
     "lint": "eslint ."

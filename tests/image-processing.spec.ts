@@ -6,6 +6,8 @@ import {
   waitForSlugNote,
   assertDraftInvariants,
   hasSection,
+  copyForInspection,
+  copyNexusDiagnostics,
   cleanupCreatedFiles,
 } from './helpers/vault-utils';
 import { openNoteByUuid, assertNoteMatchesFrontmatter } from './helpers/dashboard-ui';
@@ -22,6 +24,14 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
     // against," not "empty folder."
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
     processingBaseline = await snapshotDir(PROCESSING_DIR);
+  });
+
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) {
+      const dir = await copyForInspection(createdPaths, testInfo.title);
+      await copyNexusDiagnostics(dir);
+      console.log(`[image-processing] FAILED — files copied for inspection to ${dir}`);
+    }
   });
 
   test.afterAll(async () => {

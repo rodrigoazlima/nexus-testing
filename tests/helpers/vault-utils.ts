@@ -4,6 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import matter from 'gray-matter';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR, POLL_TIMEOUT_MS, POLL_INTERVAL_MS } from './config';
+import { NEXUS_PATH } from './nexus-install';
 
 const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures', 'test-images');
 
@@ -236,4 +237,43 @@ export async function copyForInspection(paths: string[], label: string): Promise
     }
   }
   return dir;
+}
+
+/**
+ * Copies NEXUS_PATH's daemon log and state JSON into an inspection dir (see
+ * copyForInspection) — global-teardown.ts wipes NEXUS_PATH right after the
+ * suite finishes, so on a timeout failure this is the only chance to capture
+ * what the daemon actually did (2026-07-09 perf review, finding #1). Call
+ * from the same afterEach, before afterAll's cleanup/teardown runs.
+ */
+export async function copyNexusDiagnostics(dir: string): Promise<void> {
+  await fs.mkdir(dir, { recursive: true });
+
+  const automationLog = path.join(
+    NEXUS_PATH,
+    'agents',
+    'runtime',
+    'state',
+    'logs',
+    'automation.log'
+  );
+  try {
+    await fs.copyFile(automationLog, path.join(dir, 'automation.log'));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+
+  const stateDir = path.join(NEXUS_PATH, 'system', 'state');
+  try {
+    const jsonFiles = (await fs.readdir(stateDir)).filter((f) => f.endsWith('.json'));
+    if (jsonFiles.length > 0) {
+      const destDir = path.join(dir, 'state');
+      await fs.mkdir(destDir, { recursive: true });
+      await Promise.all(
+        jsonFiles.map((f) => fs.copyFile(path.join(stateDir, f), path.join(destDir, f)))
+      );
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
 }

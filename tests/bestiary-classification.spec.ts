@@ -7,6 +7,7 @@ import {
   assertDraftInvariants,
   pollNoteUntil,
   copyForInspection,
+  copyNexusDiagnostics,
   cleanupCreatedFiles,
   BESTIARY_TYPES,
 } from './helpers/vault-utils';
@@ -27,6 +28,7 @@ test.describe.serial('Bestiary classification: skeletor portrait -> creature/mon
   test.afterEach(async ({}, testInfo) => {
     if (testInfo.status !== testInfo.expectedStatus) {
       const dir = await copyForInspection(createdPaths, testInfo.title);
+      await copyNexusDiagnostics(dir);
       console.log(`[bestiary-classification] FAILED — files copied for inspection to ${dir}`);
     }
   });

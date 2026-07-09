@@ -1,4 +1,10 @@
-import { NEXUS_PATH, clearInstall, installFresh, withInstallLock } from './helpers/nexus-install';
+import {
+  NEXUS_PATH,
+  clearInstall,
+  installFresh,
+  warnIfEnvLocalMissing,
+  withInstallLock,
+} from './helpers/nexus-install';
 
 // Fresh-installs Nexus before the suite runs: clear any dirty/leftover
 // install, clone fresh, clean install. Mirrors custom-install.ps1's steps as
@@ -9,5 +15,6 @@ export default async function globalSetup(): Promise<void> {
     clearInstall();
     installFresh();
   });
+  warnIfEnvLocalMissing();
   console.log('[global-setup] environment ready');
 }
