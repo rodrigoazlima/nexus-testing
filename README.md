@@ -33,7 +33,7 @@ npm run report    # open the last HTML report
 
 1. **`tests/global-setup.ts`** — clears any dirty/leftover install (uninstalls the service if present, removes `NEXUS_PATH`), clones `NexusCampaigns` fresh, then runs `setup-service.ps1 -CleanInstall`. Same steps as `custom-install.ps1`, kept as our own TS copy rather than invoking that script directly. `setup-service.ps1` itself is the target repo's own installer, so it's still shelled out to as a subprocess.
 2. **the spec suite** — runs in full, against the freshly installed dashboard/daemon and `VAULT_PATH`.
-3. **`tests/global-teardown.ts`** — uninstalls the service, leaving the machine clean for the next run.
+3. **`tests/global-teardown.ts`** — uninstalls the service and wipes `NEXUS_PATH`/`VAULT_PATH` (same steps as `scripts/clean.ts`), leaving `.testing` clean for the next run.
 
 Global setup/teardown run on every `playwright test` invocation (including filtered runs, e.g. `npx playwright test image-processing`).
 

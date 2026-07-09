@@ -1,16 +1,17 @@
 import fs from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { NEXUS_PATH, SETUP_SCRIPT, withInstallLock } from './helpers/nexus-install';
+import { clearInstall, withInstallLock } from './helpers/nexus-install';
+import { VAULT_PATH } from './helpers/config';
 
-// Uninstalls the Nexus service after the suite finishes, leaving the machine
-// clean for the next run.
+// Uninstalls the service and wipes NEXUS_PATH + VAULT_PATH after the suite
+// finishes, leaving .testing clean for the next run. Same steps as
+// scripts/clean.ts.
 export default async function globalTeardown(): Promise<void> {
   withInstallLock('global-teardown', () => {
-    if (fs.existsSync(SETUP_SCRIPT)) {
-      console.log('[global-teardown] uninstalling service');
-      execFileSync('pwsh', ['-File', SETUP_SCRIPT, '-Uninstall'], { stdio: 'inherit' });
-    } else {
-      console.log(`[global-teardown] no service found at ${NEXUS_PATH}, nothing to uninstall`);
+    clearInstall();
+
+    if (fs.existsSync(VAULT_PATH)) {
+      console.log(`[global-teardown] removing vault at ${VAULT_PATH}`);
+      fs.rmSync(VAULT_PATH, { recursive: true, force: true });
     }
   });
 }
