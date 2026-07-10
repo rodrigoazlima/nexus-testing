@@ -9,9 +9,9 @@ import {
   copyForInspection,
   copyNexusDiagnostics,
   cleanupCreatedFiles,
-} from './helpers/vault-utils';
-import { openNoteByUuid, assertNoteMatchesFrontmatter } from './helpers/dashboard-ui';
-import { INBOX_IMAGES_DIR, PROCESSING_DIR } from './helpers/config';
+} from '../helpers/vault-utils';
+import { openNoteByUuid, assertNoteMatchesFrontmatter } from '../helpers/dashboard-ui';
+import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
 test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing draft', () => {
   const createdPaths: string[] = [];

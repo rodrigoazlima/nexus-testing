@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { copyFixtureWithRandomName, cleanupCreatedFiles } from './helpers/vault-utils';
-import { uploadViaButton, uploadViaDragAndDrop } from './helpers/dashboard-ui';
-import { INBOX_IMAGES_DIR } from './helpers/config';
+import { copyFixtureWithRandomName, cleanupCreatedFiles } from '../helpers/vault-utils';
+import { uploadViaButton, uploadViaDragAndDrop } from '../helpers/dashboard-ui';
+import { INBOX_IMAGES_DIR } from '../helpers/config';
 
 // Scoped fast: only proves the upload entry point lands the file and the
 // dashboard reflects it. Does NOT wait for the vision daemon to turn it into
