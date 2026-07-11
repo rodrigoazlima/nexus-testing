@@ -18,4 +18,7 @@ export const POLL_TIMEOUT_MS = Number(process.env.POLL_TIMEOUT_MS ?? 10 * 60_000
 export const POLL_INTERVAL_MS = Number(process.env.POLL_INTERVAL_MS ?? 5_000);
 
 export const INBOX_IMAGES_DIR = path.join(VAULT_PATH, '00-Inbox', 'images');
+export const INBOX_DOCS_DIR = path.join(VAULT_PATH, '00-Inbox', 'docs');
 export const PROCESSING_DIR = path.join(VAULT_PATH, '01-Processing');
+export const LIBRARY_DIR = path.join(VAULT_PATH, '02-Library');
+export const ARCHIVE_DIR = path.join(VAULT_PATH, '99-Archive');

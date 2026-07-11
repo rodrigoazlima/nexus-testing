@@ -4,7 +4,9 @@
   "private": true,
   "description": "Black-box Playwright tests for the Nexus Campaigns image ingestion pipeline (vault filesystem + dashboard UI).",
   "scripts": {
-    "test": "playwright test",
+    "test": "playwright test --grep-invert @slow-agent",
+    "test:pipeline:fast": "playwright test tests/pipeline --grep-invert @slow-agent",
+    "test:pipeline:slow": "playwright test tests/pipeline --grep @slow-agent",
     "test:unit": "node --import tsx --test tests/helpers/*.test.ts",
     "report": "playwright show-report",
     "clean": "tsx scripts/clean.ts",

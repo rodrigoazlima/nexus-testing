@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import {
   snapshotDir,
   copyFixtureWithRandomName,
@@ -11,14 +12,12 @@ import {
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
-// ponytail: tags beyond [0] (the category) are guessed from the filename, not
-// verified against real vision-agent output — GRAPH_REPORT.md carries no
-// per-image tag ground truth for this fixture (only skeletor.jpg has one, via
-// bestiary-classification.spec.ts). Correct from observed output after the
-// first real run against the live daemon.
+// ponytail: tags beyond [0] are filename-guessed, not verified ground truth
+// (moved from the deleted tests/image-tags/heman-barbarian1.spec.ts). Correct
+// from observed output after the first real run against the live daemon.
 const EXPECTED_TAGS = ['portrait', 'barbarian'];
 
-test.describe.serial('Image tags: heman-barbarian1.jpg -> vision draft', () => {
+test.describe.serial('token-agent: portrait image gets a circular token generated', () => {
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
@@ -32,7 +31,7 @@ test.describe.serial('Image tags: heman-barbarian1.jpg -> vision draft', () => {
     if (testInfo.status !== testInfo.expectedStatus) {
       const dir = await copyForInspection(createdPaths, testInfo.title);
       await copyNexusDiagnostics(dir);
-      console.log(`[image-tags/heman-barbarian1] FAILED — files copied for inspection to ${dir}`);
+      console.log(`[agent-token-generation] FAILED — files copied for inspection to ${dir}`);
     }
   });
 
@@ -42,7 +41,7 @@ test.describe.serial('Image tags: heman-barbarian1.jpg -> vision draft', () => {
     await cleanupCreatedFiles(createdPaths);
   });
 
-  test('heman-barbarian1.jpg gets expected tags, name, and draft state', async () => {
+  test('heman-barbarian1 portrait produces a sibling {stem}-token.png', async () => {
     const { randomName } = await test.step('drop heman-barbarian1.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('heman-barbarian1.jpg');
       createdPaths.push(dropped.destPath);
@@ -54,20 +53,34 @@ test.describe.serial('Image tags: heman-barbarian1.jpg -> vision draft', () => {
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
     createdPaths.push(notePath, imagePath);
-    const noteId = path.basename(notePath, '.md');
 
-    await test.step('validate name', () => {
-      expect(data.id, 'frontmatter id must equal the note filename stem').toBe(noteId);
-    });
-
-    await test.step('validate current state', () => {
+    await test.step('assert frontmatter invariants', () => {
+      const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
     });
 
-    await test.step('validate tags', () => {
+    await test.step('assert tags[0] is a token-eligible category (portrait/body)', () => {
+      expect(['portrait', 'body']).toContain(data.tags[0]);
+    });
+
+    await test.step('assert tags', () => {
       for (const tag of EXPECTED_TAGS) {
         expect(data.tags, `tags must include "${tag}"`).toContain(tag);
       }
+    });
+
+    // ponytail: 3min ceiling, same reasoning as bestiary-classification.spec.ts
+    // — token-agent runs the same cycle right after vision (registry.yaml
+    // execution_order), and it's CV-only (llm: none) so should be fast.
+    await test.step('wait for token-agent to generate the sibling token image', async () => {
+      const stem = path.basename(imagePath, path.extname(imagePath));
+      const tokenPath = path.join(INBOX_IMAGES_DIR, `${stem}-token.png`);
+
+      await expect(async () => {
+        await fs.access(tokenPath);
+      }).toPass({ timeout: 3 * 60_000, intervals: [5_000] });
+
+      createdPaths.push(tokenPath);
     });
   });
 });
