@@ -8,7 +8,7 @@ import {
   hasSection,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { openNoteByUuid, assertNoteMatchesFrontmatter } from '../helpers/dashboard-ui';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
@@ -35,9 +35,9 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('renames dropped sword image and produces an enriched draft note', async ({ page }) => {
@@ -63,13 +63,29 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
     });
 
     await test.step('assert source references the renamed image (no ![[embed]] in this pipeline)', () => {
-      expect(data.source.some((src) => src.endsWith(path.basename(imagePath)))).toBe(true);
-      expect(content).not.toMatch(/!\[\[.*\]\]/);
+      const imageBasename = path.basename(imagePath);
+      const sourceMatches = data.source.some((src) => src.endsWith(imageBasename));
+      console.log(
+        `[image-processing] source — expected: an entry ending with "${imageBasename}", actual: ${JSON.stringify(data.source)}`
+      );
+      expect(
+        sourceMatches,
+        `source — expected: an entry ending with "${imageBasename}", actual: ${JSON.stringify(data.source)}`
+      ).toBe(true);
+      expect(
+        content,
+        `content — expected: no "![[embed]]" syntax, actual content contains one`
+      ).not.toMatch(/!\[\[.*\]\]/);
     });
 
     await test.step('assert body has the expected sections', () => {
-      expect(hasSection(content, 'Description')).toBe(true);
-      expect(hasSection(content, 'Related')).toBe(true);
+      const hasDescription = hasSection(content, 'Description');
+      const hasRelated = hasSection(content, 'Related');
+      console.log(
+        `[image-processing] sections — expected: Description=true, Related=true | actual: Description=${hasDescription}, Related=${hasRelated}`
+      );
+      expect(hasDescription, `## Description section — expected: true, actual: ${hasDescription}`).toBe(true);
+      expect(hasRelated, `## Related section — expected: true, actual: ${hasRelated}`).toBe(true);
     });
 
     await test.step('assert the dashboard reflects the same note', async () => {

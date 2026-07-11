@@ -5,10 +5,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   readFrontmatter,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import {
@@ -53,9 +54,9 @@ test.describe.serial('lore-agent: portrait + active scenario -> NPC draft', () =
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('diana-acrobat portrait + active scenario produces an NPC draft', async () => {
@@ -78,13 +79,14 @@ test.describe.serial('lore-agent: portrait + active scenario -> NPC draft', () =
       });
 
       await test.step('assert tags[0] is an NPC-eligible category (portrait/body)', () => {
-        expect(['portrait', 'body']).toContain(data.tags[0]);
+        expect(
+          ['portrait', 'body'],
+          `tags[0] — expected one of: ["portrait", "body"], actual: "${data.tags[0]}"`
+        ).toContain(data.tags[0]);
       });
 
       await test.step('assert tags', () => {
-        for (const tag of EXPECTED_TAGS) {
-          expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-        }
+        assertTagsInclude(data.tags, EXPECTED_TAGS, 'diana-acrobat.jpg');
       });
 
       const npcNotePath = await test.step('wait for lore-agent to write an NPC draft', async () => {
@@ -101,8 +103,12 @@ test.describe.serial('lore-agent: portrait + active scenario -> NPC draft', () =
 
       await test.step('assert the NPC draft has valid frontmatter', async () => {
         const { data: npcData } = await readFrontmatter(npcNotePath);
-        expect(npcData.status).toBe('draft');
-        expect(npcData.id).toBe(path.basename(npcNotePath, '.md'));
+        const expectedId = path.basename(npcNotePath, '.md');
+        console.log(
+          `[agent-lore-npc-generation] npcData actual={status:"${npcData.status}", id:"${npcData.id}"}`
+        );
+        expect(npcData.status, `status — expected: "draft", actual: "${npcData.status}"`).toBe('draft');
+        expect(npcData.id, `id — expected: "${expectedId}", actual: "${npcData.id}"`).toBe(expectedId);
       });
 
       await test.step('assert processed-npcs.json recorded an ok entry', async () => {

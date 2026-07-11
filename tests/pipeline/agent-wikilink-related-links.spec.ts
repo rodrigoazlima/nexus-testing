@@ -5,11 +5,12 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   readFrontmatter,
   hasSection,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { promoteToLibrary } from '../helpers/nexus-state';
@@ -46,9 +47,9 @@ test.describe.serial(
     });
 
     test.afterAll(async () => {
-      // Never delete folders on this OneDrive-backed vault (Cloud-Files
-      // placeholder risk) — only the specific files this run created.
-      await cleanupCreatedFiles(createdPaths);
+      // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+      // spec that deletes files — this just hands off what this run created.
+      await registerCreatedPaths(createdPaths);
     });
 
     test('orc1 and orc2 (both tagged "orc") get linked in each other\'s ## Related', async () => {
@@ -65,9 +66,7 @@ test.describe.serial(
         );
         createdPaths.push(notePath, imagePath);
         assertDraftInvariants(data, path.basename(notePath, '.md'));
-        for (const tag of EXPECTED_TAGS) {
-          expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-        }
+        assertTagsInclude(data.tags, EXPECTED_TAGS, fixture);
 
         const { libraryNotePath, data: promoted } = await promoteToLibrary(notePath);
         createdPaths.push(libraryNotePath);
@@ -88,10 +87,15 @@ test.describe.serial(
 
           const note1LinksNote2 = hasSection(note1.content, 'Related') && note1.content.includes(`[[${orc2.id}]]`);
           const note2LinksNote1 = hasSection(note2.content, 'Related') && note2.content.includes(`[[${orc1.id}]]`);
+          console.log(
+            `[agent-wikilink-related-links] expected: [[${orc2.id}]] in ${orc1.id}'s ## Related OR [[${orc1.id}]] in ${orc2.id}'s ## Related | ` +
+              `actual: note1LinksNote2=${note1LinksNote2}, note2LinksNote1=${note2LinksNote1}`
+          );
 
           expect(
             note1LinksNote2 || note2LinksNote1,
-            `Still waiting for a [[wikilink]] between ${orc1.id} and ${orc2.id} in either note's ## Related section.`
+            `Still waiting for a [[wikilink]] between ${orc1.id} and ${orc2.id} in either note's ## Related section. ` +
+              `actual: note1LinksNote2=${note1LinksNote2}, note2LinksNote1=${note2LinksNote1}`
           ).toBeTruthy();
         }).toPass({ timeout: 65 * 60_000, intervals: [60_000] });
       });

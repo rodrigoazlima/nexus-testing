@@ -5,10 +5,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   pollNoteUntil,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
   BESTIARY_TYPES,
 } from './helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from './helpers/config';
@@ -34,9 +35,9 @@ test.describe.serial('Bestiary classification: skeletor portrait -> creature/mon
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('skeletor image gets undead/skeleton tags, a bestiary type, and shows on /gm/bestiary', async ({
@@ -80,12 +81,14 @@ test.describe.serial('Bestiary classification: skeletor portrait -> creature/mon
     );
 
     await test.step('assert enriched type and tags', () => {
-      expect(BESTIARY_TYPES as readonly string[], 'type must be a bestiary type').toContain(
-        enrichedData.type
+      console.log(
+        `[bestiary-classification] expected type in [${BESTIARY_TYPES.join(', ')}], actual: "${enrichedData.type}"`
       );
-      for (const tag of EXPECTED_TAGS) {
-        expect(enrichedData.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      expect(
+        BESTIARY_TYPES as readonly string[],
+        `type — expected one of: [${BESTIARY_TYPES.join(', ')}], actual: "${enrichedData.type}"`
+      ).toContain(enrichedData.type);
+      assertTagsInclude(enrichedData.tags, EXPECTED_TAGS, 'skeletor.jpg (enriched)');
     });
 
     await test.step('assert the entity shows up on the dashboard bestiary page', async () => {

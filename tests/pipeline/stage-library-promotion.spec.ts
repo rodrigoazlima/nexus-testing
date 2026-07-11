@@ -5,9 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { openNoteByUuid, assertNoteMatchesFrontmatter } from '../helpers/dashboard-ui';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
@@ -41,9 +42,9 @@ test.describe.serial('02-Library stage: human promotion sets status: approved', 
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('promoted note shows approved status and Library location in the dashboard', async ({
@@ -67,9 +68,7 @@ test.describe.serial('02-Library stage: human promotion sets status: approved', 
     });
 
     await test.step('assert tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'bobby-barbarian.jpg');
     });
 
     const { libraryNotePath, data: promotedData } = await test.step(
@@ -79,10 +78,22 @@ test.describe.serial('02-Library stage: human promotion sets status: approved', 
     createdPaths.push(libraryNotePath);
 
     await test.step('assert promoted frontmatter invariants', () => {
-      expect(promotedData.status).toBe('approved');
-      expect(promotedData.quality).toBeGreaterThanOrEqual(7);
-      expect(promotedData.reviewed).toBe(true);
-      expect(promotedData.relationships.length).toBeGreaterThan(0);
+      console.log(
+        `[stage-library-promotion] promoted actual={status:"${promotedData.status}", quality:${promotedData.quality}, ` +
+          `reviewed:${promotedData.reviewed}, relationships.length:${promotedData.relationships.length}}`
+      );
+      expect(promotedData.status, `status — expected: "approved", actual: "${promotedData.status}"`).toBe(
+        'approved'
+      );
+      expect(
+        promotedData.quality,
+        `quality — expected: >= 7, actual: ${promotedData.quality}`
+      ).toBeGreaterThanOrEqual(7);
+      expect(promotedData.reviewed, `reviewed — expected: true, actual: ${promotedData.reviewed}`).toBe(true);
+      expect(
+        promotedData.relationships.length,
+        `relationships.length — expected: > 0, actual: ${promotedData.relationships.length}`
+      ).toBeGreaterThan(0);
     });
 
     await test.step('assert the dashboard reflects the approved, promoted note', async () => {

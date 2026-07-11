@@ -6,9 +6,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -36,9 +37,9 @@ test.describe.serial('token-agent: portrait image gets a circular token generate
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('heman-barbarian1 portrait produces a sibling {stem}-token.png', async () => {
@@ -60,13 +61,14 @@ test.describe.serial('token-agent: portrait image gets a circular token generate
     });
 
     await test.step('assert tags[0] is a token-eligible category (portrait/body)', () => {
-      expect(['portrait', 'body']).toContain(data.tags[0]);
+      expect(
+        ['portrait', 'body'],
+        `tags[0] — expected one of: ["portrait", "body"], actual: "${data.tags[0]}"`
+      ).toContain(data.tags[0]);
     });
 
     await test.step('assert tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'heman-barbarian1.jpg');
     });
 
     // ponytail: 3min ceiling, same reasoning as bestiary-classification.spec.ts

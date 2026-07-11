@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { copyNexusDiagnostics, cleanupCreatedFiles } from '../helpers/vault-utils';
+import { copyNexusDiagnostics, registerCreatedPaths } from '../helpers/vault-utils';
 import { createStaleLogFixture } from '../helpers/nexus-state';
 
 // cleanup-agent runs every 86400s (registry.yaml) — far past the suite's
@@ -31,9 +31,9 @@ test.describe.serial(
 
     test.afterAll(async () => {
       // If cleanup-agent never ran (or this test failed early), make sure our
-      // own fixture doesn't linger — cleanupCreatedFiles ignores ENOENT, so
-      // this is a no-op if the agent already purged it.
-      await cleanupCreatedFiles([logPath]);
+      // own fixture doesn't linger — hand it to the shared exclusion registry
+      // (stage-inbox-exclusion.spec.ts drains it) instead of deleting here.
+      await registerCreatedPaths([logPath]);
     });
 
     test('our backdated dummy log file is purged by the next cleanup cycle', async () => {

@@ -6,10 +6,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   readFrontmatter,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { promoteToLibrary, archiveNote } from '../helpers/nexus-state';
@@ -42,9 +43,9 @@ test.describe.serial('99-Archive stage: retiring an approved note sets status: a
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('archived note keeps valid frontmatter at its new 99-Archive path', async () => {
@@ -66,9 +67,7 @@ test.describe.serial('99-Archive stage: retiring an approved note sets status: a
     });
 
     await test.step('assert tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'presto-magician.jpg');
     });
 
     const { libraryNotePath } = await test.step(
@@ -88,10 +87,20 @@ test.describe.serial('99-Archive stage: retiring an approved note sets status: a
         await fs.access(archivedNotePath);
       }).toPass({ timeout: 10_000 });
 
-      expect(archivedData.status).toBe('archived');
+      console.log(
+        `[stage-archive] archivedData actual={status:"${archivedData.status}", id:"${archivedData.id}"}`
+      );
+      expect(
+        archivedData.status,
+        `status — expected: "archived", actual: "${archivedData.status}"`
+      ).toBe('archived');
       const { data: reRead } = await readFrontmatter(archivedNotePath);
-      expect(reRead.status).toBe('archived');
-      expect(reRead.id).toBe(archivedData.id);
+      expect(reRead.status, `re-read status — expected: "archived", actual: "${reRead.status}"`).toBe(
+        'archived'
+      );
+      expect(reRead.id, `re-read id — expected: "${archivedData.id}", actual: "${reRead.id}"`).toBe(
+        archivedData.id
+      );
     });
   });
 });

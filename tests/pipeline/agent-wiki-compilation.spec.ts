@@ -8,7 +8,7 @@ import {
   readFrontmatter,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_DOCS_DIR, PROCESSING_DIR } from '../helpers/config';
 import { INBOX_QUEUE_PATH, readJsonState, findEntryByFilename } from '../helpers/nexus-state';
@@ -41,9 +41,9 @@ test.describe.serial('wiki-agent: dropped document compiles into a Processing dr
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('sample-lore.md compiles into a draft entity referencing it as source', async () => {
@@ -92,15 +92,18 @@ test.describe.serial('wiki-agent: dropped document compiles into a Processing dr
 
     await test.step('assert the compiled draft has draft status', async () => {
       const { data } = await readFrontmatter(notePath);
-      expect(data.status).toBe('draft');
-      expect(data.id).toBe(path.basename(notePath, '.md'));
+      const expectedId = path.basename(notePath, '.md');
+      console.log(`[agent-wiki-compilation] actual={status:"${data.status}", id:"${data.id}"}`);
+      expect(data.status, `status — expected: "draft", actual: "${data.status}"`).toBe('draft');
+      expect(data.id, `id — expected: "${expectedId}", actual: "${data.id}"`).toBe(expectedId);
     });
 
     await test.step('assert inbox-queue.json marks wiki done for this document', async () => {
       const queue = await readJsonState<unknown>(INBOX_QUEUE_PATH);
       const entry = findEntryByFilename<QueueEntry>(queue, docName);
       expect(entry, `no inbox-queue.json entry found referencing ${docName}`).toBeTruthy();
-      expect(entry!.agents.wiki).toBe('done');
+      console.log(`[agent-wiki-compilation] agents.wiki — expected: "done", actual: "${entry!.agents.wiki}"`);
+      expect(entry!.agents.wiki, `agents.wiki — expected: "done", actual: "${entry!.agents.wiki}"`).toBe('done');
     });
   });
 });

@@ -5,9 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from './helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from './helpers/config';
 
@@ -39,9 +40,9 @@ test.describe.serial('Rename scenario: random source filename must not leak into
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('vision slug is content-derived, independent of the random source filename', async () => {
@@ -59,7 +60,7 @@ test.describe.serial('Rename scenario: random source filename must not leak into
     const noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
-      expect(data.id, 'frontmatter id must equal the note filename stem').toBe(noteId);
+      expect(data.id, `id — expected: "${noteId}" (note filename stem), actual: "${data.id}"`).toBe(noteId);
     });
 
     await test.step('validate rename is content-derived, not filename-derived', () => {
@@ -68,10 +69,17 @@ test.describe.serial('Rename scenario: random source filename must not leak into
       // substring, renaming stopped being content-based and started leaking
       // the source filename through.
       const randomStem = path.parse(randomName).name;
-      expect(noteId, 'slug must not equal the random source filename stem').not.toBe(randomStem);
-      expect(noteId, 'slug must not contain the random source filename stem').not.toContain(
-        randomStem
+      console.log(
+        `[scenario-rename-test] expected: noteId != "${randomStem}" and not containing it | actual noteId: "${noteId}"`
       );
+      expect(
+        noteId,
+        `slug must not equal the random source filename stem — expected: != "${randomStem}", actual: "${noteId}"`
+      ).not.toBe(randomStem);
+      expect(
+        noteId,
+        `slug must not contain the random source filename stem — expected: not containing "${randomStem}", actual: "${noteId}"`
+      ).not.toContain(randomStem);
     });
 
     await test.step('validate current state', () => {
@@ -79,9 +87,7 @@ test.describe.serial('Rename scenario: random source filename must not leak into
     });
 
     await test.step('validate tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, FIXTURE);
     });
   });
 });

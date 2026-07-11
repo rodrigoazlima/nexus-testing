@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { copyFixtureWithRandomName, cleanupCreatedFiles } from '../helpers/vault-utils';
+import { copyFixtureWithRandomName, registerCreatedPaths } from '../helpers/vault-utils';
 import { uploadViaButton, uploadViaDragAndDrop } from '../helpers/dashboard-ui';
 import { INBOX_IMAGES_DIR } from '../helpers/config';
 
@@ -17,7 +17,9 @@ test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
   const createdPaths: string[] = [];
 
   test.afterAll(async () => {
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('uploads sword image via the /gm/inbox Upload button', async ({ page }) => {
@@ -32,11 +34,17 @@ test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
     const landedPath = path.join(INBOX_IMAGES_DIR, randomName);
     await expect(async () => {
       await fs.access(landedPath);
-    }).toPass({ timeout: 30_000, intervals: [1_000] });
+    }, `landedPath — expected: "${landedPath}" to exist on disk after upload`).toPass({
+      timeout: 30_000,
+      intervals: [1_000],
+    });
     createdPaths.push(landedPath);
 
     await page.goto('/gm/inbox');
-    await expect(page.getByText(randomName, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(randomName, { exact: true }),
+      `/gm/inbox — expected: "${randomName}" visible in the file list`
+    ).toBeVisible();
   });
 
   test('uploads sword image via drag-and-drop onto /gm/inbox', async ({ page }) => {
@@ -51,10 +59,16 @@ test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
     const landedPath = path.join(INBOX_IMAGES_DIR, randomName);
     await expect(async () => {
       await fs.access(landedPath);
-    }).toPass({ timeout: 30_000, intervals: [1_000] });
+    }, `landedPath — expected: "${landedPath}" to exist on disk after upload`).toPass({
+      timeout: 30_000,
+      intervals: [1_000],
+    });
     createdPaths.push(landedPath);
 
     await page.goto('/gm/inbox');
-    await expect(page.getByText(randomName, { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(randomName, { exact: true }),
+      `/gm/inbox — expected: "${randomName}" visible in the file list`
+    ).toBeVisible();
   });
 });

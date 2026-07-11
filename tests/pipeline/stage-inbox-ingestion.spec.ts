@@ -5,9 +5,10 @@ import {
   snapshotDir,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { INBOX_QUEUE_PATH, readJsonState, findEntryByFilename } from '../helpers/nexus-state';
@@ -42,9 +43,9 @@ test.describe.serial('Ingestion stage: messy filename -> normalized + queued for
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('messy-named drop is normalized by ingestion and queued image-type-only for vision/lore/classification', async () => {
@@ -71,17 +72,24 @@ test.describe.serial('Ingestion stage: messy filename -> normalized + queued for
     });
 
     await test.step('assert tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'axe.jpg (messy filename)');
     });
 
     await test.step('assert inbox-queue.json registered this image with the right agent slots', async () => {
       const queue = await readJsonState<unknown>(INBOX_QUEUE_PATH);
       const entry = findEntryByFilename<QueueEntry>(queue, path.basename(imagePath));
       expect(entry, `no inbox-queue.json entry found referencing ${path.basename(imagePath)}`).toBeTruthy();
-      expect(entry!.agents.wiki, 'image-type files must never be queued for wiki').toBe('skip');
-      expect(entry!.agents.vision, 'vision must have completed for this file').toBe('done');
+      console.log(
+        `[stage-inbox-ingestion] agents actual={wiki:"${entry!.agents.wiki}", vision:"${entry!.agents.vision}"}`
+      );
+      expect(
+        entry!.agents.wiki,
+        `agents.wiki — expected: "skip" (image-type files never queued for wiki), actual: "${entry!.agents.wiki}"`
+      ).toBe('skip');
+      expect(
+        entry!.agents.vision,
+        `agents.vision — expected: "done", actual: "${entry!.agents.vision}"`
+      ).toBe('done');
     });
   });
 });

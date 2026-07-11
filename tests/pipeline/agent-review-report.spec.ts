@@ -6,10 +6,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   pollNoteUntil,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { REPORTS_DIR } from '../helpers/nexus-state';
@@ -39,9 +40,9 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('half-orc draft gets suggestedQuality injected and the daily report refreshes', async () => {
@@ -61,13 +62,14 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
     await test.step('assert frontmatter invariants (quality: 0, no suggestedQuality yet)', () => {
       const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
-      expect(data.suggestedQuality, 'suggestedQuality is injected later by review-agent').toBeUndefined();
+      expect(
+        data.suggestedQuality,
+        `suggestedQuality — expected: undefined (injected later by review-agent), actual: ${JSON.stringify(data.suggestedQuality)}`
+      ).toBeUndefined();
     });
 
     await test.step('assert tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'half-orc.jpg');
     });
 
     await test.step('wait for review-agent to inject suggestedQuality', () =>
@@ -85,9 +87,13 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
 
       await expect(async () => {
         const stat = await fs.stat(reportPath);
-        expect(stat.mtimeMs, `${reportPath} must have been written after the test's drop`).toBeGreaterThanOrEqual(
-          dropTime
+        console.log(
+          `[agent-review-report] ${reportPath} — expected mtimeMs >= ${dropTime} (drop time), actual: ${stat.mtimeMs}`
         );
+        expect(
+          stat.mtimeMs,
+          `${reportPath} mtimeMs — expected: >= ${dropTime} (drop time), actual: ${stat.mtimeMs}`
+        ).toBeGreaterThanOrEqual(dropTime);
       }).toPass({ timeout: 60_000, intervals: [5_000] });
     });
   });

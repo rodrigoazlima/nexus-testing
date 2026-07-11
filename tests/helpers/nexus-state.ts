@@ -55,7 +55,9 @@ export async function pollJsonState<T>(
 
   await expect(async () => {
     last = await readJsonState<T>(absPath);
-    expect(predicate(last), describe(last)).toBe(true);
+    const ok = predicate(last);
+    console.log(`[pollJsonState] ${absPath} — condition met: ${ok} | ${describe(last)}`);
+    expect(ok, describe(last)).toBe(true);
   }).toPass({
     timeout: opts.timeout ?? POLL_TIMEOUT_MS,
     intervals: opts.intervals ?? [POLL_INTERVAL_MS],

@@ -128,10 +128,19 @@ export async function waitForSlugNote(
             data: parsed.data,
             content: parsed.content,
           };
+          console.log(
+            `[waitForSlugNote] RESOLVED — expected: a draft referencing a renamed sibling of "${originalRandomName}" | ` +
+              `actual: notePath="${notePath}" imagePath="${matchedImage}" id="${parsed.data.id}" tags=[${(parsed.data.tags ?? []).join(', ')}]`
+          );
           return;
         }
       }
     }
+
+    console.log(
+      `[waitForSlugNote] poll attempt — expected: original "${originalRandomName}" renamed + a processing/*.md draft sourcing it | ` +
+        `actual: originalStillInInbox=${originalStillPresent}, newInboxFiles=[${renamedCandidates.join(', ')}], newProcessingNotes=[${newNotes.join(', ')}]`
+    );
 
     expect(
       result,
@@ -154,29 +163,53 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Structural invariants only — never assert on exact LLM-generated prose. */
 export function assertDraftInvariants(data: FrontmatterData, noteId: string): void {
-  expect(data.status, 'fresh vision-agent drafts must be status: draft').toBe('draft');
-  expect(data.quality, 'fresh drafts start at quality: 0').toBe(0);
-  expect(data.reviewed, 'agents may never set reviewed: true (vault_guard.py)').toBe(false);
+  console.log(
+    `[assertDraftInvariants] noteId="${noteId}" actual={status:"${data.status}", quality:${data.quality}, ` +
+      `reviewed:${data.reviewed}, relationships:${JSON.stringify(data.relationships)}, uuid:"${data.uuid}", ` +
+      `sha256:"${data.sha256}", id:"${data.id}", created:"${data.created}", updated:"${data.updated}", ` +
+      `tags:${JSON.stringify(data.tags)}, source:${JSON.stringify(data.source)}}`
+  );
+  expect(data.status, `status — expected: "draft", actual: "${data.status}"`).toBe('draft');
+  expect(data.quality, `quality — expected: 0, actual: ${data.quality}`).toBe(0);
+  expect(data.reviewed, `reviewed — expected: false, actual: ${data.reviewed}`).toBe(false);
   expect(
     Array.isArray(data.relationships) && data.relationships.length === 0,
-    'fresh drafts start with no relationships'
+    `relationships — expected: [] (empty array), actual: ${JSON.stringify(data.relationships)}`
   ).toBeTruthy();
-  expect(data.uuid, 'uuid must be a v4 UUID').toMatch(UUID_V4_RE);
-  expect(data.sha256, 'sha256 must be a 64-char hex digest').toMatch(SHA256_RE);
-  expect(data.id, 'id must equal the note filename stem').toBe(noteId);
-  expect(data.created, 'created must be YYYY-MM-DD').toMatch(DATE_RE);
-  expect(data.updated, 'updated must be YYYY-MM-DD').toMatch(DATE_RE);
-  expect(Array.isArray(data.tags) && data.tags.length > 0, 'tags must be non-empty').toBeTruthy();
+  expect(data.uuid, `uuid — expected format: v4 UUID, actual: "${data.uuid}"`).toMatch(UUID_V4_RE);
+  expect(data.sha256, `sha256 — expected format: 64-char hex digest, actual: "${data.sha256}"`).toMatch(
+    SHA256_RE
+  );
+  expect(data.id, `id — expected: "${noteId}" (note filename stem), actual: "${data.id}"`).toBe(noteId);
+  expect(data.created, `created — expected format: YYYY-MM-DD, actual: "${data.created}"`).toMatch(DATE_RE);
+  expect(data.updated, `updated — expected format: YYYY-MM-DD, actual: "${data.updated}"`).toMatch(DATE_RE);
+  expect(
+    Array.isArray(data.tags) && data.tags.length > 0,
+    `tags — expected: non-empty array, actual: ${JSON.stringify(data.tags)}`
+  ).toBeTruthy();
   expect(
     IMAGE_CATEGORY_VOCAB as readonly string[],
-    `tags[0] must be a known image category, got "${data.tags?.[0]}"`
+    `tags[0] — expected one of: [${IMAGE_CATEGORY_VOCAB.join(', ')}], actual: "${data.tags?.[0]}"`
   ).toContain(data.tags[0]);
   // suggestedQuality is injected later by the review agent (agents/review/AGENT.md),
   // not by vision — absent here is correct, not a defect.
   expect(
     Array.isArray(data.source) && data.source.length > 0,
-    'source must be a non-empty array'
+    `source — expected: non-empty array, actual: ${JSON.stringify(data.source)}`
   ).toBeTruthy();
+}
+
+/** Asserts `actualTags` is a superset of `expectedTags`, logging both explicitly either way. */
+export function assertTagsInclude(actualTags: string[], expectedTags: string[], context = 'tags'): void {
+  console.log(
+    `[${context}] expected to include: [${expectedTags.join(', ')}] | actual: [${(actualTags ?? []).join(', ')}]`
+  );
+  for (const tag of expectedTags) {
+    expect(
+      actualTags,
+      `${context} — expected to include "${tag}", actual: [${(actualTags ?? []).join(', ')}]`
+    ).toContain(tag);
+  }
 }
 
 export function hasSection(content: string, heading: string): boolean {
@@ -191,6 +224,48 @@ export async function cleanupCreatedFiles(paths: string[]): Promise<void> {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
   }
+}
+
+const CREATED_PATHS_REGISTRY = path.join(__dirname, '..', '..', 'tmp', 'created-paths.jsonl');
+
+/**
+ * Hands this test's created-file paths off to a shared on-disk ledger
+ * instead of deleting them itself — per-file afterAll cleanup was
+ * centralized into one pipeline test (stage-inbox-exclusion.spec.ts) so that
+ * "created files actually get deleted" is itself a tested pipeline stage
+ * ("exclusion"), not silent per-file teardown. One appendFile() call per
+ * test, one JSON array per line — safe under concurrent workers since each
+ * write is a single small syscall.
+ */
+export async function registerCreatedPaths(paths: string[]): Promise<void> {
+  if (paths.length === 0) return;
+  await fs.mkdir(path.dirname(CREATED_PATHS_REGISTRY), { recursive: true });
+  await fs.appendFile(CREATED_PATHS_REGISTRY, JSON.stringify(paths) + '\n', 'utf-8');
+}
+
+/**
+ * Deletes every path any spec has ever handed to registerCreatedPaths, then
+ * clears the ledger. Ponytail: reading the file and truncating it are two
+ * separate calls, so a path appended by a concurrent worker in between is
+ * lost from this drain — it just sits in the (now-shorter) ledger for the
+ * next exclusion-test run to pick up. Never touches a path this ledger
+ * didn't list.
+ */
+export async function drainCreatedPathsRegistry(): Promise<string[]> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(CREATED_PATHS_REGISTRY, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw err;
+  }
+
+  const uniquePaths = [
+    ...new Set(raw.split('\n').filter(Boolean).flatMap((line) => JSON.parse(line) as string[])),
+  ];
+  await cleanupCreatedFiles(uniquePaths);
+  await fs.writeFile(CREATED_PATHS_REGISTRY, '', 'utf-8');
+  return uniquePaths;
 }
 
 /**
@@ -209,7 +284,9 @@ export async function pollNoteUntil(
 
   await expect(async () => {
     last = await readFrontmatter(notePath);
-    expect(predicate(last.data), describe(last.data)).toBe(true);
+    const ok = predicate(last.data);
+    console.log(`[pollNoteUntil] ${notePath} — condition met: ${ok} | ${describe(last.data)}`);
+    expect(ok, describe(last.data)).toBe(true);
   }).toPass({
     timeout: opts.timeout ?? POLL_TIMEOUT_MS,
     intervals: opts.intervals ?? [POLL_INTERVAL_MS],

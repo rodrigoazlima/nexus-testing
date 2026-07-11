@@ -5,9 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
+  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
-  cleanupCreatedFiles,
+  registerCreatedPaths,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -37,9 +38,9 @@ test.describe.serial('Image tags: elf-ranger.jpg -> vision draft', () => {
   });
 
   test.afterAll(async () => {
-    // Never delete folders on this OneDrive-backed vault (Cloud-Files
-    // placeholder risk) — only the specific files this run created.
-    await cleanupCreatedFiles(createdPaths);
+    // Cleanup centralized: stage-inbox-exclusion.spec.ts is now the only
+    // spec that deletes files — this just hands off what this run created.
+    await registerCreatedPaths(createdPaths);
   });
 
   test('elf-ranger.jpg gets expected tags, name, and draft state', async () => {
@@ -57,7 +58,7 @@ test.describe.serial('Image tags: elf-ranger.jpg -> vision draft', () => {
     const noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
-      expect(data.id, 'frontmatter id must equal the note filename stem').toBe(noteId);
+      expect(data.id, `id — expected: "${noteId}" (note filename stem), actual: "${data.id}"`).toBe(noteId);
     });
 
     await test.step('validate current state', () => {
@@ -65,9 +66,7 @@ test.describe.serial('Image tags: elf-ranger.jpg -> vision draft', () => {
     });
 
     await test.step('validate tags', () => {
-      for (const tag of EXPECTED_TAGS) {
-        expect(data.tags, `tags must include "${tag}"`).toContain(tag);
-      }
+      assertTagsInclude(data.tags, EXPECTED_TAGS, 'elf-ranger.jpg');
     });
   });
 });
