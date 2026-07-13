@@ -103,11 +103,24 @@ export function installFresh(): void {
 // install wouldn't take effect. `runtime` is left alone: its 60s value is the
 // dispatch loop itself, not an agent cadence, and slowing it to 300s would
 // add up to 5min of dispatch latency to every agent.
-const AGENT_INTERVAL_OVERRIDES_S: Record<string, number> = {
+export const AGENT_INTERVAL_OVERRIDES_S: Record<string, number> = {
   repair: 25 * 60,
   cleanup: 26 * 60,
 };
-const DEFAULT_AGENT_INTERVAL_S = 5 * 60;
+export const DEFAULT_AGENT_INTERVAL_S = 5 * 60;
+
+/** Parses `<agent>: interval_seconds` pairs out of the installed registry.yaml. */
+export function readAgentIntervals(): Record<string, number> {
+  const intervals: Record<string, number> = {};
+  let agent = '';
+  for (const line of fs.readFileSync(REGISTRY_PATH, 'utf-8').split('\n')) {
+    const key = line.match(/^  ([\w-]+):\s*$/);
+    if (key) agent = key[1];
+    const m = line.match(/^\s+interval_seconds:\s*(\d+)\s*$/);
+    if (m) intervals[agent] = Number(m[1]);
+  }
+  return intervals;
+}
 
 /** Rewrites every agent `interval_seconds:` in the cloned registry.yaml. */
 export function overrideAgentSchedules(): void {

@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import { clearInstall, withInstallLock } from './helpers/nexus-install';
 import { VAULT_PATH } from './helpers/config';
+import { buildReport, marker, stopSampler } from './helpers/profile';
 
 // Uninstalls the service and wipes NEXUS_PATH + VAULT_PATH after the suite
 // finishes, leaving .testing clean for the next run. Same steps as
 // scripts/clean.ts.
 export default async function globalTeardown(): Promise<void> {
+  marker('uninstall', 'start');
   withInstallLock('global-teardown', () => {
     clearInstall();
 
@@ -14,4 +16,8 @@ export default async function globalTeardown(): Promise<void> {
       fs.rmSync(VAULT_PATH, { recursive: true, force: true });
     }
   });
+  marker('uninstall', 'end');
+
+  stopSampler();
+  buildReport();
 }

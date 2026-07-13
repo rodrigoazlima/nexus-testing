@@ -30,7 +30,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 3,
   retries: 0,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  // profile-reporter only writes per-test phase markers for the resource
+  // usage report (tests/helpers/profile.ts) — the html report itself gets a
+  // resource-usage.html copy dropped in by global-teardown's buildReport().
+  reporter: [['list'], ['html', { open: 'never' }], ['./scripts/profile-reporter.ts']],
   use: {
     baseURL: process.env.DASHBOARD_URL ?? 'http://localhost:48080',
     screenshot: 'only-on-failure',
