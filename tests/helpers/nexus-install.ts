@@ -11,6 +11,7 @@ export const NEXUS_PATH = path.resolve(process.env.NEXUS_PATH ?? path.join(ROOT_
 export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
 export const BRANCH = 'master';
 export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');
+export const REGISTRY_PATH = path.join(NEXUS_PATH, 'agents', 'registry.yaml');
 
 // Guards clearInstall/installFresh (global-setup, global-teardown, clean.ts)
 // against overlapping each other — e.g. `npm run clean` fired while a test
@@ -81,6 +82,10 @@ export function installFresh(): void {
   // explicitly trusted.
   run('git', ['config', '--global', '--add', 'safe.directory', NEXUS_PATH.replace(/\\/g, '/')]);
 
+  // Must happen between clone and setup-service.ps1 — see the comment on
+  // overrideAgentSchedules.
+  overrideAgentSchedules();
+
   console.log(`running clean install (vault: ${VAULT_PATH})`);
   assertElevated();
   // -CleanInstall gates on an interactive `Read-Host "Type 'yes' to confirm"`
@@ -89,6 +94,42 @@ export function installFresh(): void {
   // <ProjectRoot>\.knowledge-base, not VAULT_PATH — the daemon would then
   // watch a vault the tests never touch and every test would time out.
   run('pwsh', ['-File', SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH], 'yes\n');
+}
+
+// Test-lane schedule: the stock registry ships 900s–86400s agent intervals,
+// which is what makes the slow lane slow. Rewritten after clone and before
+// setup-service.ps1 runs, because runner.py synthesizes each missing
+// agent.json from registry.yaml at install time — editing the registry after
+// install wouldn't take effect. `runtime` is left alone: its 60s value is the
+// dispatch loop itself, not an agent cadence, and slowing it to 300s would
+// add up to 5min of dispatch latency to every agent.
+const AGENT_INTERVAL_OVERRIDES_S: Record<string, number> = {
+  repair: 25 * 60,
+  cleanup: 26 * 60,
+};
+const DEFAULT_AGENT_INTERVAL_S = 5 * 60;
+
+/** Rewrites every agent `interval_seconds:` in the cloned registry.yaml. */
+export function overrideAgentSchedules(): void {
+  const lines = fs.readFileSync(REGISTRY_PATH, 'utf-8').split('\n');
+  let agent = '';
+  let changed = 0;
+  const out = lines.map((line) => {
+    // Two-space-indented keys are the entries under `agents:` (and other
+    // top-level maps, which have no interval_seconds and are unaffected).
+    const key = line.match(/^  ([\w-]+):\s*$/);
+    if (key) agent = key[1];
+    const m = line.match(/^(\s+interval_seconds:\s*)\d+\s*$/);
+    if (!m || agent === 'runtime') return line;
+    changed++;
+    return `${m[1]}${AGENT_INTERVAL_OVERRIDES_S[agent] ?? DEFAULT_AGENT_INTERVAL_S}`;
+  });
+  fs.writeFileSync(REGISTRY_PATH, out.join('\n'));
+  console.log(
+    `[global-setup] registry.yaml: overrode ${changed} interval_seconds ` +
+      `(agents ${DEFAULT_AGENT_INTERVAL_S}s, repair ${AGENT_INTERVAL_OVERRIDES_S.repair}s, ` +
+      `cleanup ${AGENT_INTERVAL_OVERRIDES_S.cleanup}s)`
+  );
 }
 
 const ENV_LOCAL_SKIP_DIRS = new Set(['node_modules', '.git']);

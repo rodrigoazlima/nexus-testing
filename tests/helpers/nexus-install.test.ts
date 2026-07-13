@@ -72,6 +72,39 @@ function writeFakeSetupScript(): void {
   fs.writeFileSync(nexusInstall.SETUP_SCRIPT, '# fake setup-service.ps1 for tests\n');
 }
 
+// Trimmed copy of the real registry.yaml shapes overrideAgentSchedules must
+// handle: the runtime exception, override exceptions, a plain agent, and a
+// non-agent two-space map with a *_seconds key that must survive untouched.
+const FAKE_REGISTRY = `version: 1
+
+llm_endpoints:
+  vision_llm:
+    url: "http://localhost:1234/v1/chat/completions"
+    timeout_seconds: 120
+
+agents:
+  runtime:
+    status: active
+    interval_seconds: 60
+
+  repair:
+    status: active
+    interval_seconds: 86400
+
+  vision:
+    status: active
+    interval_seconds: 900
+
+  cleanup:
+    status: active
+    interval_seconds: 86400
+`;
+
+function writeFakeRegistry(): void {
+  fs.mkdirSync(path.dirname(nexusInstall.REGISTRY_PATH), { recursive: true });
+  fs.writeFileSync(nexusInstall.REGISTRY_PATH, FAKE_REGISTRY);
+}
+
 describe('clearInstall', () => {
   test('is a no-op when NEXUS_PATH does not exist', () => {
     const calls: ExecCall[] = [];
@@ -115,6 +148,7 @@ describe('clearInstall', () => {
 
 describe('installFresh', () => {
   test('clones, trusts the dir, elevation-checks, then runs -CleanInstall with -VaultRoot over stdin', () => {
+    writeFakeRegistry(); // clone is mocked, so seed what it would have produced
     const calls: ExecCall[] = [];
     mockExec(calls);
 
@@ -152,6 +186,7 @@ describe('installFresh', () => {
   });
 
   test('clones and trusts the dir before failing fast on elevation, never reaching -CleanInstall', () => {
+    writeFakeRegistry();
     const calls: ExecCall[] = [];
     mockExec(calls, (call) => {
       if (call.cmd === 'net') throw new Error('not elevated');
@@ -162,6 +197,27 @@ describe('installFresh', () => {
       calls.map((c) => c.cmd),
       ['git', 'git', 'net']
     );
+  });
+});
+
+describe('overrideAgentSchedules', () => {
+  test('rewrites agent intervals to 300s, repair to 1500s, cleanup to 1560s, leaving runtime alone', () => {
+    writeFakeRegistry();
+
+    nexusInstall.overrideAgentSchedules();
+
+    const rewritten = fs.readFileSync(nexusInstall.REGISTRY_PATH, 'utf-8');
+    const intervals: Record<string, number> = {};
+    let agent = '';
+    for (const line of rewritten.split('\n')) {
+      const key = line.match(/^  ([\w-]+):\s*$/);
+      if (key) agent = key[1];
+      const m = line.match(/^\s+interval_seconds: (\d+)\s*$/);
+      if (m) intervals[agent] = Number(m[1]);
+    }
+    assert.deepEqual(intervals, { runtime: 60, repair: 1500, vision: 300, cleanup: 1560 });
+    // Non-interval *_seconds keys outside agents: must survive untouched.
+    assert.match(rewritten, /timeout_seconds: 120/);
   });
 });
 

@@ -19,10 +19,11 @@ import { THUMBS_DIR, computeSha1 } from '../helpers/nexus-state';
 // from observed output after the first real run against the live daemon.
 const EXPECTED_TAGS = ['scene', 'cave', 'forest'];
 
-// thumbnails-agent runs every 3600s (registry.yaml) — well past the suite's
-// normal 10min test timeout, and there's no in-scope way to force-trigger it.
-// Tagged @slow-agent (see package.json test:pipeline:fast/:slow) with its own
-// ~70min budget instead of being skipped.
+// thumbnails-agent's interval is overridden to 300s at install time
+// (overrideAgentSchedules, helpers/nexus-install.ts), but vision (also 300s)
+// must process the drop first and there's no in-scope way to force-trigger
+// either. Tagged @slow-agent (see package.json test:pipeline:fast/:slow) with
+// its own 30min budget instead of being skipped.
 test.describe.serial(
   'thumbnails-agent: dropped image gets a 320px webp thumbnail',
   { tag: '@slow-agent' },
@@ -51,7 +52,7 @@ test.describe.serial(
     });
 
     test('florest-cave.jpg gets expected tags and a thumbs/<sha1>.webp cache entry', async () => {
-      test.setTimeout(70 * 60_000);
+      test.setTimeout(30 * 60_000);
 
       const { randomName, sha1 } = await test.step('drop florest-cave.jpg and hash its bytes', async () => {
         const { destPath, randomName } = await copyFixtureWithRandomName('florest-cave.jpg');
@@ -80,7 +81,7 @@ test.describe.serial(
 
         await expect(async () => {
           await fs.access(thumbPath);
-        }).toPass({ timeout: 65 * 60_000, intervals: [60_000] });
+        }).toPass({ timeout: 25 * 60_000, intervals: [30_000] });
 
         createdPaths.push(thumbPath);
       });

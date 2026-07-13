@@ -4,11 +4,11 @@ import fs from 'node:fs/promises';
 import { copyNexusDiagnostics, registerCreatedPaths } from '../helpers/vault-utils';
 import { createStaleLogFixture } from '../helpers/nexus-state';
 
-// cleanup-agent runs every 86400s (registry.yaml) — far past the suite's
+// cleanup-agent's interval is overridden to 1560s (26min) at install time
+// (overrideAgentSchedules, helpers/nexus-install.ts) — still past the suite's
 // normal 10min test timeout, and there's no in-scope way to force-trigger it.
 // Tagged @slow-agent (see package.json test:pipeline:fast/:slow); this test
-// ties up a worker for ~24h, run it standalone/off-hours, not in a normal
-// `npm test`.
+// ties up a worker for up to ~1h, keep it out of a normal `npm test`.
 //
 // cleanup-agent is content-agnostic maintenance (purges old logs/reports) —
 // nothing here is derived from an image-tags test. Crucially, this creates
@@ -37,13 +37,13 @@ test.describe.serial(
     });
 
     test('our backdated dummy log file is purged by the next cleanup cycle', async () => {
-      test.setTimeout(25 * 60 * 60_000);
+      test.setTimeout(60 * 60_000);
 
       logPath = await createStaleLogFixture();
 
       await expect(async () => {
         await expect(fs.access(logPath)).rejects.toThrow();
-      }).toPass({ timeout: 24.5 * 60 * 60_000, intervals: [5 * 60_000] });
+      }).toPass({ timeout: 55 * 60_000, intervals: [60_000] });
     });
   }
 );
