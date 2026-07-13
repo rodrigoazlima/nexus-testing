@@ -6,7 +6,7 @@
   "scripts": {
     "test": "playwright test --grep-invert @slow-agent",
     "test:pipeline:fast": "playwright test tests/pipeline --grep-invert @slow-agent",
-    "test:pipeline:slow": "playwright test tests/pipeline --grep @slow-agent",
+    "test:pipeline:slow": "playwright test tests/pipeline --grep @slow-agent --workers=4",
     "test:unit": "node --import tsx --test tests/helpers/*.test.ts",
     "report": "playwright show-report",
     "clean": "tsx scripts/clean.ts",
