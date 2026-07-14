@@ -66,15 +66,68 @@ npm run clean     # wipe NEXUS_PATH (service uninstall + dir) and VAULT_PATH
 
 ## Tests
 
-- **`tests/image-processing.spec.ts`** — full pipeline: copies `fixtures/test-images/sword-test.jpg` into `00-Inbox/images` under a random name, polls (no way to force-trigger the daemon — a 60s runtime loop feeding a 900s vision-agent interval) until it's renamed and a draft note appears in `01-Processing`, then asserts frontmatter invariants, body sections, and that the dashboard's note view matches. Slow — a live backlog can push this out 50+ minutes.
-- **`tests/inbox-upload.spec.ts`** — fast, UI-only: proves the two `/gm/inbox` upload entry points (Upload button, drag-and-drop) land the file in `00-Inbox/images` and show up in the inbox listing. Does **not** wait for the vision daemon — the full round-trip is already covered once by `image-processing.spec.ts`.
-- **`tests/bestiary-classification.spec.ts`** — second-stage pipeline: after the vision draft lands, polls the *same* note for the classification-agent (LocalRouter `localhost:8080`) to enrich tags/type, then asserts a specific tag set + bestiary `type`, and that the entity shows on `/gm/bestiary`. Reference/template for scenario tests — see below.
+`npm test` runs everything under `tests/` (minus `@slow-agent`). `npm run test:pipeline:fast`/`test:pipeline:slow` only cover `tests/pipeline/` — `tests/image-tags/*`, `tests/bestiary-classification.spec.ts`, and `tests/scenario-rename-test.spec.ts` run only via plain `npm test`.
+
+### Pipeline stages (`tests/pipeline/stage-*.spec.ts`)
+
+- **`stage-setup-agent-config.spec.ts`** — fast, no daemon wait: asserts global-setup's `registry.yaml` interval overrides (`overrideAgentSchedules`) landed in every agent's synthesized `agent.json`.
+- **`stage-inbox-ingestion.spec.ts`** — a messy filename (spaces + emoji) is normalized before vision ever sees it; asserts `inbox-queue.json` queued the right agent slots (`wiki: skip`, `vision: done`).
+- **`stage-inbox-exclusion.spec.ts`** — the only spec that actually deletes anything: hands its own paths to the shared cleanup ledger, drains it (picking up every other spec's registered paths too), and asserts they're gone from disk. Positioned right after `stage-inbox-ingestion`.
+- **`stage-library-promotion.spec.ts`** — simulates the human review step (`promoteToLibrary`, since agents are blocked from doing this themselves) approving a draft into `02-Library`; asserts approved frontmatter and that the dashboard reflects it.
+- **`stage-archive.spec.ts`** — promotes then retires a note (`archiveNote`) into `99-Archive`; asserts `status: archived` frontmatter survives a re-read.
+
+### Agents (`tests/pipeline/agent-*.spec.ts`)
+
+- **`agent-classification-enrichment.spec.ts`** — classification-agent (LocalRouter `localhost:8080`) enriches a vision draft's tags/type; asserts an `ok` `processed-images.json` entry.
+- **`agent-lore-npc-generation.spec.ts`** — a portrait/body drop + an active scenario (`withScenarioActive`) produces an NPC draft; asserts `processed-npcs.json`.
+- **`agent-thumbnail-generation.spec.ts`** `@slow-agent` — asserts a cached `system/state/thumbs/<sha1>.webp` thumbnail appears.
+- **`agent-token-generation.spec.ts`** — a portrait/body drop gets a sibling `{stem}-token.png` circular token image.
+- **`agent-wiki-compilation.spec.ts`** — wiki-agent compiles a dropped `00-Inbox/docs/*.md` document into a Processing draft (images never reach this agent — ingestion always queues them `wiki: skip`).
+- **`agent-wikilink-related-links.spec.ts`** `@slow-agent` — two same-tag Library notes (`orc1.jpg`/`orc2.jpg`) get cross-referenced in each other's `## Related` section.
+- **`agent-review-report.spec.ts`** — review-agent injects `suggestedQuality` into a `quality: 0` draft and refreshes that day's `report-<date>.json`.
+- **`agent-repair-maintenance.spec.ts`** `@slow-agent` — waits out a full ~25min repair cycle and asserts `repair-<date>.json` refreshes. Content-agnostic maintenance; ties up a worker for up to ~1h.
+- **`agent-cleanup-log-purge.spec.ts`** `@slow-agent` — creates its own 91-day-backdated dummy log file and asserts cleanup-agent purges it. Never touches real production logs.
+
+### Whole pipeline (`tests/pipeline/`)
+
+- **`image-processing.spec.ts`** — the original full-pipeline spec via a plain filesystem drop: `sword-test.jpg` → renamed + drafted, with frontmatter, body-section (`## Description`, `## Related`), and dashboard-match assertions. Slow — a live backlog can push this out 50+ minutes.
+- **`inbox-upload.spec.ts`** — fast, UI-only: proves the two `/gm/inbox` upload entry points (Upload button, drag-and-drop) land the file and show up in the inbox listing. Does **not** wait for the vision daemon — the full round-trip is already covered once by `image-processing.spec.ts`.
+
+### Image tags (`tests/image-tags/*.spec.ts`)
+
+One spec per fixture image, all sharing the same shape (drop under a random name → wait for the vision draft → assert `id`/structural invariants/tags). Tags beyond `tags[0]` are frequently filename-guessed, not verified ground truth — see the `ponytail:` comments in each file.
+
+| Fixture | Expected tags |
+|---|---|
+| `bow.jpg` | token, bow, weapon |
+| `city-battlemap.jpg` | battlemap, city |
+| `dragon-blue.jpg` | body, dragon, blue |
+| `dragon-red.jpg` | body, dragon, red |
+| `dragon-red-mountains.jpg` | scene, dragon, red, mountains |
+| `dragon-white.jpg` | body, dragon, white |
+| `eirc-cavalier.jpg` | portrait, cavalier |
+| `elf-ranger.jpg` | portrait, elf, ranger |
+| `hank-ranger.jpg` | portrait, ranger |
+| `heman-barbarian2.jpg` | portrait, barbarian |
+| `heman-barbarian3.jpg` | portrait, barbarian |
+| `misty-mountains.jpg` | scene, mountains |
+| `two-characters-heman-and-she-ra.jpg` | scene, barbarian |
+| `two-characters-skeletor-and-Hordakr.jpg` | scene, undead |
+| `vingador.jpg` | portrait |
+
+### Standalone (`tests/`)
+
+- **`bestiary-classification.spec.ts`** — reference/template for scenario tests: `skeletor.jpg` gets `undead`/`skeleton` tags, a bestiary `type` (`creature`/`monster`/`encounter`), and shows up on `/gm/bestiary`.
+- **`scenario-rename-test.spec.ts`** — regression guard: the vision-assigned slug must be content-derived and must not equal or contain the random source filename's stem.
 
 ## Helpers
 
-- `tests/helpers/config.ts` — env-driven paths/timeouts.
-- `tests/helpers/vault-utils.ts` — directory snapshotting/diffing, frontmatter parsing (`gray-matter`), `waitForSlugNote` (polls for the daemon's renamed image + draft note), `pollNoteUntil` (re-polls one known note for a second-stage agent's enrichment), `assertDraftInvariants` (structural checks only — never asserts on LLM-generated prose), `copyForInspection` (saves a failing run's files to `tmp/` before cleanup deletes them), `copyNexusDiagnostics` (saves `NEXUS_PATH`'s `automation.log` + `system/state/*.json` into the same `tmp/` dir — the only way to see what the daemon was doing, since `global-teardown.ts` wipes `NEXUS_PATH` right after the run), cleanup of files created during a run.
-- `tests/helpers/dashboard-ui.ts` — dashboard page interactions: open a note by UUID, assert note view matches frontmatter, upload via button, upload via drag-and-drop.
+- `tests/helpers/config.ts` — env-driven paths/timeouts/vault subdirectory constants (`INBOX_IMAGES_DIR`, `INBOX_DOCS_DIR`, `PROCESSING_DIR`, `LIBRARY_DIR`, `ARCHIVE_DIR`). Nothing else lives here.
+- `tests/helpers/nexus-install.ts` — clones/installs/uninstalls the Nexus codebase (`clearInstall`, `installFresh`), the cross-process install lock (`withInstallLock`), the elevation check, the `.env.local` sanity check (`warnIfEnvLocalMissing`), and the test-lane schedule rewrite applied to every fresh clone (`overrideAgentSchedules`/`readAgentIntervals`). `BRANCH` is read from `NEXUS_BRANCH` here — see "Running against a specific Nexus branch" above. Covered by `nexus-install.test.ts` (mocks `execFileSync`, never runs a real install).
+- `tests/helpers/vault-utils.ts` — the core polling/assertion toolkit: `snapshotDir`/`diffNewFiles` (the directory-diff baseline pattern every spec uses), `copyFixtureWithRandomName`, `waitForSlugNote` (the primary "did the pipeline run" signal — polls until the dropped image is renamed *and* a draft note's `source:` frontmatter references it), `pollNoteUntil` (re-polls one already-located note for second-stage agent enrichment), `assertDraftInvariants` (structural checks only — UUID/sha256 format, `status`/`quality`/`reviewed` defaults, non-empty `tags`/`source`; never asserts on LLM-generated prose), `assertTagsInclude`, `hasSection`, `copyForInspection`/`copyNexusDiagnostics` (save a failing run's files plus `NEXUS_PATH`'s `automation.log`/state JSON into `tmp/` before cleanup/teardown deletes the originals), and the centralized cleanup registry (`registerCreatedPaths`/`drainCreatedPathsRegistry`/`cleanupCreatedFiles`) — specs hand their created paths to a shared on-disk ledger instead of deleting them in their own `afterAll`; only `stage-inbox-exclusion.spec.ts` drains it.
+- `tests/helpers/nexus-state.ts` — direct access to the daemon's own JSON state files under `NEXUS_PATH` that `vault-utils.ts` can't reach from vault files alone: state-file path constants (`INBOX_QUEUE_PATH`, `PROCESSED_IMAGES_PATH`, `PROCESSED_NPCS_PATH`, `SCENARIOS_PATH`, `WIKILINK_STATE_PATH`, `REPORTS_DIR`, `THUMBS_DIR`, `DAEMON_LOGS_DIR`), `readJsonState`/`pollJsonState` (mirrors `pollNoteUntil`'s shape for raw JSON state), `findEntryByFilename`, `promoteToLibrary`/`archiveNote` (simulate the human review/retirement steps agents are blocked from doing themselves), `withScenarioActive` (temporarily flips a scenario's `active` flag, restores the original in a `finally`), `computeSha1`, and `createStaleLogFixture` (its own 91-day-backdated dummy log for the cleanup-agent test — never touches real logs).
+- `tests/helpers/dashboard-ui.ts` — dashboard page interactions: `openNoteByUuid`/`assertNoteMatchesFrontmatter` (open a note, assert its type/status `<select>`s, tag chips, and source line match frontmatter), `uploadViaButton`/`uploadViaDragAndDrop`.
+- `tests/helpers/profile.ts` — whole-run resource profiling: `startSampler`/`stopSampler` (a detached CPU/memory sampler process spanning install → every test → uninstall), `marker` (phase boundaries written by global-setup/teardown and `scripts/profile-reporter.ts`), `summarize`/`buildReport` (joins samples + markers into `tmp/profile/resource-report.html`, also copied into the Playwright HTML report as `resource-usage.html`). Covered by `profile.test.ts`.
 
 ## Adding a new image/scenario test
 
