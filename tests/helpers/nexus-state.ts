@@ -35,7 +35,10 @@ export const WIKILINK_STATE_PATH = path.join(
   'state',
   'wikilink-state.json'
 );
-export const REPORTS_DIR = path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'reports');
+// repair-agent writes repair-{date}.json under review's reports dir, not its
+// own or runtime's — verified against repair_agent.py (_REPORTS_DIR) and the
+// 2026-07-13 live run.
+export const REPORTS_DIR = path.join(NEXUS_PATH, 'agents', 'review', 'state', 'reports');
 export const THUMBS_DIR = path.join(NEXUS_PATH, 'system', 'state', 'thumbs');
 export const DAEMON_LOGS_DIR = path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'logs');
 
@@ -164,15 +167,18 @@ export async function computeSha1(filePath: string): Promise<string> {
 
 /**
  * Creates a dummy log file backdated past cleanup-agent's cleanupDays
- * threshold (7 days) — never touches real production logs, only a file this
- * test created and owns. Returns the path so the caller can assert on it
- * disappearing (and clean it up itself if the agent never runs).
+ * threshold — cleanup_agent.py purges by mtime with a 90-day default (no
+ * cleanupDays in the synthesized agent.json), verified 2026-07-13 after an
+ * 8-day backdate sat through three cleanup cycles untouched. Never touches
+ * real production logs, only a file this test created and owns. Returns the
+ * path so the caller can assert on it disappearing (and clean it up itself
+ * if the agent never runs).
  */
 export async function createStaleLogFixture(): Promise<string> {
   await fs.mkdir(DAEMON_LOGS_DIR, { recursive: true });
   const logPath = path.join(DAEMON_LOGS_DIR, `test-stale_${Date.now()}.log`);
   await fs.writeFile(logPath, `[stale test fixture] ${new Date().toISOString()}\n`, 'utf-8');
-  const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+  const old = new Date(Date.now() - 91 * 24 * 60 * 60 * 1000);
   await fs.utimes(logPath, old, old);
   return logPath;
 }

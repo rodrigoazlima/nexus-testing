@@ -1,5 +1,5 @@
 import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
-import { marker } from '../tests/helpers/profile';
+import { buildReport, marker } from '../tests/helpers/profile';
 
 // Emits one start/end marker pair per test so the resource-usage report
 // (tests/helpers/profile.ts) can slice system samples per test. The sampler
@@ -14,6 +14,12 @@ class ProfileReporter implements Reporter {
   }
   onTestEnd(test: TestCase, result: TestResult): void {
     marker(`test:${test.title}`, 'end', result.status);
+  }
+  // The html reporter regenerates playwright-report/ AFTER global-teardown
+  // (observed 2026-07-13: teardown's copy got wiped), so rebuild/re-copy here
+  // — onExit runs last, after the html reporter has written its folder.
+  async onExit(): Promise<void> {
+    buildReport();
   }
 }
 

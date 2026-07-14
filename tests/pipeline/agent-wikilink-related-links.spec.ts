@@ -15,11 +15,11 @@ import {
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { promoteToLibrary } from '../helpers/nexus-state';
 
-// ponytail: tags beyond [0] are filename-guessed, not verified ground truth
-// (moved from the deleted tests/image-tags/orc1.spec.ts + orc2.spec.ts, both
-// expecting the same tags). Correct from observed output after the first
-// real run against the live daemon.
-const EXPECTED_TAGS = ['portrait', 'orc'];
+// Live run 2026-07-13: orc1.jpg came back [body, orc, giant, interior] — the
+// filename-guessed 'portrait' never appeared. Only assert the shared 'orc'
+// tag: it's the one thing this test actually needs (wikilink-agent links
+// same-tag Library notes), and the rest varies per image.
+const EXPECTED_TAGS = ['orc'];
 
 // wikilink-agent's interval is overridden to 300s at install time
 // (overrideAgentSchedules, helpers/nexus-install.ts), but vision (also 300s)

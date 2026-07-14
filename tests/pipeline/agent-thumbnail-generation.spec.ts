@@ -14,10 +14,9 @@ import {
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { THUMBS_DIR, computeSha1 } from '../helpers/nexus-state';
 
-// ponytail: tags beyond [0] are filename-guessed, not verified ground truth
-// (moved from the deleted tests/image-tags/florest-cave.spec.ts). Correct
-// from observed output after the first real run against the live daemon.
-const EXPECTED_TAGS = ['scene', 'cave', 'forest'];
+// Verified against the live daemon 2026-07-13: vision tagged florest-cave.jpg
+// [scene, nature, forest] (the filename-guessed 'cave' never appeared).
+const EXPECTED_TAGS = ['scene', 'nature', 'forest'];
 
 // thumbnails-agent's interval is overridden to 300s at install time
 // (overrideAgentSchedules, helpers/nexus-install.ts), but vision (also 300s)
