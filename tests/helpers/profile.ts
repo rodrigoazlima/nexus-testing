@@ -10,11 +10,11 @@ import { ROOT_DIR } from './config';
 // test, and uninstall. Phase boundaries land in markers.jsonl — global
 // setup/teardown write the install/uninstall ones, scripts/profile-reporter.ts
 // writes one pair per test. buildReport() joins the two by timestamp.
-export const PROFILE_DIR = path.join(ROOT_DIR, 'tmp', 'profile');
+export const PROFILE_DIR = process.env.PROFILE_DIR ?? path.join(ROOT_DIR, 'tmp', 'profile');
 const SAMPLES_PATH = path.join(PROFILE_DIR, 'samples.jsonl');
 const MARKERS_PATH = path.join(PROFILE_DIR, 'markers.jsonl');
 const PID_PATH = path.join(PROFILE_DIR, 'sampler.pid');
-export const REPORT_PATH = path.join(PROFILE_DIR, 'resource-report.html');
+export const REPORT_PATH = process.env.REPORT_PATH ?? path.join(PROFILE_DIR, 'resource-report.html');
 
 export interface Sample {
   ts: number;

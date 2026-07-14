@@ -8,13 +8,13 @@ import { ROOT_DIR, VAULT_PATH } from './config';
 // ROOT_DIR (not cwd) so it lands on whatever drive the repo itself is
 // checked out on, regardless of invocation directory.
 export const NEXUS_PATH = path.resolve(process.env.NEXUS_PATH ?? path.join(ROOT_DIR, '.testing', 'nexus'));
-export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
+export const REPO_URL = process.env.NEXUS_REPO_URL ?? 'https://github.com/rodrigoazlima/NexusCampaigns.git';
 // Lets a run target a feature branch of Nexus (e.g. to test against
 // in-progress agent changes) without editing this file. Read once at module
 // load, same as NEXUS_PATH/VAULT_PATH above — set NEXUS_BRANCH in .env.
 export const BRANCH = process.env.NEXUS_BRANCH ?? 'master';
-export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');
-export const REGISTRY_PATH = path.join(NEXUS_PATH, 'agents', 'registry.yaml');
+export const SETUP_SCRIPT = process.env.SETUP_SCRIPT ?? path.join(NEXUS_PATH, 'system', 'ops', 'setup-service.ps1');
+export const REGISTRY_PATH = process.env.REGISTRY_PATH ?? path.join(NEXUS_PATH, 'agents', 'registry.yaml');
 
 // Guards clearInstall/installFresh (global-setup, global-teardown, clean.ts)
 // against overlapping each other — e.g. `npm run clean` fired while a test
@@ -107,10 +107,10 @@ export function installFresh(): void {
 // dispatch loop itself, not an agent cadence, and slowing it to 300s would
 // add up to 5min of dispatch latency to every agent.
 export const AGENT_INTERVAL_OVERRIDES_S: Record<string, number> = {
-  repair: 25 * 60,
-  cleanup: 26 * 60,
+  repair: Number(process.env.AGENT_INTERVAL_REPAIR_S ?? 25 * 60),
+  cleanup: Number(process.env.AGENT_INTERVAL_CLEANUP_S ?? 26 * 60),
 };
-export const DEFAULT_AGENT_INTERVAL_S = 5 * 60;
+export const DEFAULT_AGENT_INTERVAL_S = Number(process.env.AGENT_INTERVAL_DEFAULT_S ?? 5 * 60);
 
 /** Parses `<agent>: interval_seconds` pairs out of the installed registry.yaml. */
 export function readAgentIntervals(): Record<string, number> {

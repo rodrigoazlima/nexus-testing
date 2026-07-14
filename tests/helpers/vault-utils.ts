@@ -10,12 +10,15 @@ const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures', 'test-images');
 
 // Vision agent's documented image-type vocabulary (agents/vision/AGENT.md) —
 // this is what tags[0] must be, independent of the broader `type:` entity enum.
-export const IMAGE_CATEGORY_VOCAB = ['portrait', 'body', 'battlemap', 'scene', 'token'] as const;
+export const IMAGE_CATEGORY_VOCAB =
+  process.env.IMAGE_CATEGORY_VOCAB?.split(',').map((s) => s.trim()) ??
+  (['portrait', 'body', 'battlemap', 'scene', 'token'] as const);
 
 // Entity types the dashboard's Bestiary pillar shows (system/dashboard/src/lib/pillars.ts).
 // Vision only ever assigns npc/location placeholders — reaching one of these
 // requires the classification-agent's second-stage type inference to run.
-export const BESTIARY_TYPES = ['creature', 'monster', 'encounter'] as const;
+export const BESTIARY_TYPES =
+  process.env.BESTIARY_TYPES?.split(',').map((s) => s.trim()) ?? (['creature', 'monster', 'encounter'] as const);
 
 export interface FrontmatterData {
   id: string;

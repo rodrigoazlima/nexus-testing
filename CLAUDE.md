@@ -31,12 +31,16 @@ Run a single spec: `npx playwright test tests/pipeline/stage-inbox-ingestion.spe
 |---|---|---|
 | `VAULT_PATH` | `./.testing/vault` | root of the Obsidian vault under test |
 | `NEXUS_PATH` | `./.testing/nexus` | Nexus codebase/service install, set up by `global-setup.ts` / torn down by `global-teardown.ts`. Must be NTFS (junctions used for agent linking). |
+| `NEXUS_BRANCH` | `master` | git branch/ref of NexusCampaigns to clone into `NEXUS_PATH` |
+| `NEXUS_REPO_URL` | upstream NexusCampaigns repo | git URL cloned into `NEXUS_PATH` — override to point at a fork |
 | `DASHBOARD_URL` | `http://localhost:48080` | dashboard base URL (Playwright `baseURL`) |
 | `POLL_TIMEOUT_MS` | 10 min | how long to poll the vault/state files for daemon output |
 | `POLL_INTERVAL_MS` | 5 s | poll interval |
 | `TEST_TIMEOUT_MS` | 10 min | Playwright per-test timeout |
 
 Timeouts were cut from ~90 min on 2026-07-09 to fail fast — see `performance-review-notes.md`. `expect.timeout` (Playwright default matcher timeout) is 15s; only the two poll helpers get the long budget explicitly via an explicit per-call `timeout`.
+
+Every other exported path/constant across `tests/helpers/*.ts` (vault subfolder paths, daemon state-file paths, `SETUP_SCRIPT`/`REGISTRY_PATH`, agent interval overrides, `IMAGE_CATEGORY_VOCAB`/`BESTIARY_TYPES`, profiling output paths) is also env-overridable, falling back to its derived default when unset — see the "Advanced overrides" block in `.env.example` for the full list and each one's default.
 
 ## Architecture
 

@@ -12,35 +12,23 @@ import { FrontmatterData, readFrontmatter } from './vault-utils';
 // roots are inferred from agents/runtime/state/{logs,signals} sharing one
 // root (agents/runtime/AGENT.md) — confirm on first live run against these
 // two specific files if a poll never resolves.
-export const INBOX_QUEUE_PATH = path.join(NEXUS_PATH, 'system', 'state', 'inbox-queue.json');
-export const PROCESSED_IMAGES_PATH = path.join(
-  NEXUS_PATH,
-  'agents',
-  'vision',
-  'state',
-  'processed-images.json'
-);
-export const PROCESSED_NPCS_PATH = path.join(
-  NEXUS_PATH,
-  'agents',
-  'lore',
-  'state',
-  'processed-npcs.json'
-);
-export const SCENARIOS_PATH = path.join(NEXUS_PATH, 'agents', 'lore', 'state', 'scenarios.json');
-export const WIKILINK_STATE_PATH = path.join(
-  NEXUS_PATH,
-  'agents',
-  'wikilink',
-  'state',
-  'wikilink-state.json'
-);
+export const INBOX_QUEUE_PATH =
+  process.env.INBOX_QUEUE_PATH ?? path.join(NEXUS_PATH, 'system', 'state', 'inbox-queue.json');
+export const PROCESSED_IMAGES_PATH =
+  process.env.PROCESSED_IMAGES_PATH ?? path.join(NEXUS_PATH, 'agents', 'vision', 'state', 'processed-images.json');
+export const PROCESSED_NPCS_PATH =
+  process.env.PROCESSED_NPCS_PATH ?? path.join(NEXUS_PATH, 'agents', 'lore', 'state', 'processed-npcs.json');
+export const SCENARIOS_PATH =
+  process.env.SCENARIOS_PATH ?? path.join(NEXUS_PATH, 'agents', 'lore', 'state', 'scenarios.json');
+export const WIKILINK_STATE_PATH =
+  process.env.WIKILINK_STATE_PATH ?? path.join(NEXUS_PATH, 'agents', 'wikilink', 'state', 'wikilink-state.json');
 // repair-agent writes repair-{date}.json under review's reports dir, not its
 // own or runtime's — verified against repair_agent.py (_REPORTS_DIR) and the
 // 2026-07-13 live run.
-export const REPORTS_DIR = path.join(NEXUS_PATH, 'agents', 'review', 'state', 'reports');
-export const THUMBS_DIR = path.join(NEXUS_PATH, 'system', 'state', 'thumbs');
-export const DAEMON_LOGS_DIR = path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'logs');
+export const REPORTS_DIR = process.env.REPORTS_DIR ?? path.join(NEXUS_PATH, 'agents', 'review', 'state', 'reports');
+export const THUMBS_DIR = process.env.THUMBS_DIR ?? path.join(NEXUS_PATH, 'system', 'state', 'thumbs');
+export const DAEMON_LOGS_DIR =
+  process.env.DAEMON_LOGS_DIR ?? path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'logs');
 
 export async function readJsonState<T>(absPath: string): Promise<T> {
   const raw = await fs.readFile(absPath, 'utf-8');
