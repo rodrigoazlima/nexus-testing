@@ -149,7 +149,7 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 
 ## Keeping test data after a full run
 
-`npm test --keep` (or `npm run test:pipeline:fast --keep` / `:slow`) skips `global-teardown.ts`'s uninstall/wipe step entirely, leaving `NEXUS_PATH` and `VAULT_PATH` in place for inspection. npm turns the flag into an `npm_config_keep` env var, which `tests/global-teardown.ts` checks — `scripts/clean.ts` still does a full wipe regardless, so run `npm run clean` by hand when you're done inspecting.
+`npm test --keep` (or `npm run test:pipeline:fast --keep` / `:slow`) skips `global-teardown.ts`'s uninstall/wipe step entirely, leaving `NEXUS_PATH` and `VAULT_PATH` in place for inspection. npm turns the flag into an `npm_config_keep` env var, which `tests/global-setup.ts` and `tests/global-teardown.ts` both check — setup logs `[global-setup] --keep set, ...` at the start of the run so it's visible on the console immediately, not just at teardown. `scripts/clean.ts` still does a full wipe regardless, so run `npm run clean` by hand when you're done inspecting.
 
 `global-teardown.ts` normally only wipes the ephemeral Nexus install (`NEXUS_PATH`) and vault (`VAULT_PATH`) — it never touches Playwright's own output. So a full run already leaves the useful stuff on disk afterward even without `--keep`:
 
