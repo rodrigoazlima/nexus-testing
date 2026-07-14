@@ -13,7 +13,7 @@ cp .env.example .env   # then edit as needed
 
 **Run from an elevated shell.** `npm test`/`npm run clean` shell out to `setup-service.ps1`, which installs a Windows service — without admin rights it fails deep inside the script with an error that doesn't mention elevation. `clearInstall`/`installFresh` (`tests/helpers/nexus-install.ts`) now check up front and throw a clear "re-run as Administrator" error instead.
 
-`.env` is loaded via an `import 'dotenv/config'` at the top of `playwright.config.ts` (covers `npm test`, `test:pipeline:fast`, `test:pipeline:slow`) and `scripts/clean.ts` (covers `npm run clean`) — both must stay the *first* import in those files so it runs before any other module reads `process.env` at load time. `npm run test:unit` deliberately does **not** load `.env`; it sets `NEXUS_PATH`/`VAULT_PATH` itself to point at scratch dirs before importing `nexus-install.ts`, so nothing there depends on your real `.env`.
+`.env` is loaded via an `import 'dotenv/config'` at the top of `playwright.config.ts` (covers `npm test`, `test:pipeline:fast`, `test:pipeline:slow`) and `scripts/clean.ts` (covers `npm run clean`) — both must stay the *first* import in those files so it runs before any other module reads `process.env` at load time. `npm run test:unit` preloads `dotenv/config` too, so its mocked clone assertion uses the same `NEXUS_BRANCH`; the test itself replaces only `NEXUS_PATH`/`VAULT_PATH` with scratch directories before importing `nexus-install.ts`.
 
 Env vars (see `tests/helpers/config.ts`):
 

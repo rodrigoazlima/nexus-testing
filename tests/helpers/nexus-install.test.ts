@@ -19,8 +19,10 @@ const originalExecFileSync = childProcessCjs.execFileSync;
 const originalConsoleLog = console.log;
 const originalConsoleWarn = console.warn;
 
-// Point NEXUS_PATH/VAULT_PATH at scratch dirs before nexus-install.ts (and
-// the config.ts it imports) ever evaluates its module-level consts.
+// dotenv/config is preloaded by npm run test:unit so NEXUS_BRANCH comes from
+// the repository .env. Point NEXUS_PATH/VAULT_PATH at scratch dirs before
+// nexus-install.ts (and the config.ts it imports) evaluates module-level
+// consts, keeping the unit suite isolated from the real install and vault.
 const NEXUS_PATH_ENV = path.join(os.tmpdir(), `nexus-install-test-${process.pid}`);
 const VAULT_PATH_ENV = path.join(os.tmpdir(), `nexus-install-test-vault-${process.pid}`);
 process.env.NEXUS_PATH = NEXUS_PATH_ENV;
