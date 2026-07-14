@@ -13,6 +13,8 @@ cp .env.example .env   # then edit as needed
 
 **Run from an elevated shell.** `npm test`/`npm run clean` shell out to `setup-service.ps1`, which installs a Windows service — without admin rights it fails deep inside the script with an error that doesn't mention elevation. `clearInstall`/`installFresh` (`tests/helpers/nexus-install.ts`) now check up front and throw a clear "re-run as Administrator" error instead.
 
+`.env` is loaded via an `import 'dotenv/config'` at the top of `playwright.config.ts` (covers `npm test`, `test:pipeline:fast`, `test:pipeline:slow`) and `scripts/clean.ts` (covers `npm run clean`) — both must stay the *first* import in those files so it runs before any other module reads `process.env` at load time. `npm run test:unit` deliberately does **not** load `.env`; it sets `NEXUS_PATH`/`VAULT_PATH` itself to point at scratch dirs before importing `nexus-install.ts`, so nothing there depends on your real `.env`.
+
 Env vars (see `tests/helpers/config.ts`):
 
 | Var | Default | Purpose |
@@ -34,9 +36,11 @@ By default `installFresh()` clones `NexusCampaigns`'s `master` branch. To run th
 NEXUS_BRANCH=my-feature-branch
 ```
 
-`npm test` (and `test:pipeline:fast`/`test:pipeline:slow`) run through Playwright, which loads `.env` automatically before `global-setup.ts` calls `installFresh()` — the branch is passed straight to `git clone --branch <NEXUS_BRANCH> ...`, so a non-existent branch/ref fails the clone immediately with git's own error.
+`.env` is loaded via `dotenv` (see "Setup" above) before `global-setup.ts` calls `installFresh()` — the branch is passed straight to `git clone --branch <NEXUS_BRANCH> ...`, so a non-existent branch/ref fails the clone immediately with git's own error.
 
-`NEXUS_BRANCH` only matters for the clone step (`installFresh`), not `clearInstall`/`npm run clean` — those just uninstall/remove whatever is already at `NEXUS_PATH` regardless of which branch it came from. Also note `npm run clean` (`scripts/clean.ts`) runs via `tsx`, not Playwright, so it does **not** auto-load `.env`; export `NEXUS_BRANCH` (and any other vars you need it to see) in the shell if you're invoking it directly rather than through `npm test`.
+`NEXUS_BRANCH` only matters for the clone step (`installFresh`), not `clearInstall`/`npm run clean` — those just uninstall/remove whatever is already at `NEXUS_PATH` regardless of which branch it came from.
+
+If a run still clones `master` after setting `NEXUS_BRANCH`, check (in order): the line is actually in `.env` (not just `.env.example`) at the repo root, spelled `NEXUS_BRANCH=`, with no `.env.local`/shell-exported `NEXUS_BRANCH` overriding it from elsewhere; and that `import 'dotenv/config'` is still the first import in `playwright.config.ts` — anything imported above it that reads `process.env` at module-load time (e.g. `tests/helpers/config.ts`, `tests/helpers/nexus-install.ts`) will otherwise capture the un-loaded value first.
 
 ## Running
 

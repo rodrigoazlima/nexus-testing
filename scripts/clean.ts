@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import fs from 'node:fs';
 import { NEXUS_PATH, clearInstall, withInstallLock } from '../tests/helpers/nexus-install';
 import { VAULT_PATH } from '../tests/helpers/config';

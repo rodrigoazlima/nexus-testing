@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { defineConfig, devices } from '@playwright/test';
 
 // Shortened to 10min (from 90min) per 2026-07-09 perf review: the 2026-07-09
