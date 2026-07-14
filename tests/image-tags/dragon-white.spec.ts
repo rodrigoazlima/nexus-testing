@@ -6,9 +6,11 @@ import {
   waitForSlugNote,
   assertDraftInvariants,
   assertTagsInclude,
+  pollNoteUntil,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  BESTIARY_TYPES,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -43,7 +45,9 @@ test.describe.serial('Image tags: dragon-white.jpg -> vision draft', () => {
     await registerCreatedPaths(createdPaths);
   });
 
-  test('dragon-white.jpg gets expected tags, name, and draft state', async () => {
+  test('dragon-white.jpg gets expected tags, name, and draft state, and lands in the bestiary', async ({
+    page,
+  }) => {
     const { randomName } = await test.step('drop dragon-white.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('dragon-white.jpg');
       createdPaths.push(dropped.destPath);
@@ -67,6 +71,33 @@ test.describe.serial('Image tags: dragon-white.jpg -> vision draft', () => {
 
     await test.step('validate tags', () => {
       assertTagsInclude(data.tags, EXPECTED_TAGS, 'dragon-white.jpg');
+    });
+
+    // ponytail: 3min ceiling matches bestiary-classification.spec.ts — this
+    // agent is due immediately after vision, so a tight budget fails fast.
+    const { data: enrichedData } = await test.step(
+      'wait for the classification agent to place dragon-white.jpg in the bestiary',
+      () =>
+        pollNoteUntil(
+          notePath,
+          (d) => (BESTIARY_TYPES as readonly string[]).includes(d.type),
+          (d) =>
+            `Still waiting for classification. type="${d?.type}" ` +
+            `— want type in [${BESTIARY_TYPES.join(', ')}].`,
+          { timeout: 3 * 60_000 }
+        )
+    );
+
+    await test.step('assert bestiary type', () => {
+      expect(
+        BESTIARY_TYPES as readonly string[],
+        `type — expected one of: [${BESTIARY_TYPES.join(', ')}], actual: "${enrichedData.type}"`
+      ).toContain(enrichedData.type);
+    });
+
+    await test.step('assert dragon-white.jpg shows up on the dashboard bestiary page', async () => {
+      await page.goto('/gm/bestiary');
+      await expect(page.getByText(noteId, { exact: true }).first()).toBeVisible();
     });
   });
 });

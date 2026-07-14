@@ -70,7 +70,7 @@ npm run clean     # wipe NEXUS_PATH (service uninstall + dir) and VAULT_PATH
 
 ## Tests
 
-`npm test` runs everything under `tests/` (minus `@slow-agent`). `npm run test:pipeline:fast`/`test:pipeline:slow` only cover `tests/pipeline/` — `tests/image-tags/*`, `tests/bestiary-classification.spec.ts`, and `tests/scenario-rename-test.spec.ts` run only via plain `npm test`.
+`npm test` runs everything under `tests/` (minus `@slow-agent`). `npm run test:pipeline:fast`/`test:pipeline:slow` only cover `tests/pipeline/` — `tests/image-tags/*`, `tests/token.spec.ts`, `tests/bestiary-classification.spec.ts`, and `tests/scenario-rename-test.spec.ts` run only via plain `npm test`.
 
 ### Pipeline stages (`tests/pipeline/stage-*.spec.ts`)
 
@@ -121,6 +121,7 @@ One spec per fixture image, all sharing the same shape (drop under a random name
 
 ### Standalone (`tests/`)
 
+- **`token.spec.ts`** — one test per portrait/body image-tag fixture (9 total); each drops its own fixture, waits for the vision draft, then asserts a sibling `{stem}-token.png` gets generated. Existence only, no likeness check — see the file's `TODO` for a future face-recognition assertion.
 - **`bestiary-classification.spec.ts`** — reference/template for scenario tests: `skeletor.jpg` gets `undead`/`skeleton` tags, a bestiary `type` (`creature`/`monster`/`encounter`), and shows up on `/gm/bestiary`.
 - **`scenario-rename-test.spec.ts`** — regression guard: the vision-assigned slug must be content-derived and must not equal or contain the random source filename's stem.
 
@@ -145,6 +146,17 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 6. Assert your scenario's expectations: exact tags via `toContain`, `type` against the relevant vocab (e.g. `BESTIARY_TYPES`), dashboard visibility via `page.goto('/gm/<pillar>')` + `page.getByText(noteId)`.
 7. `test.afterEach(async ({}, testInfo) => { if (testInfo.status !== testInfo.expectedStatus) { const dir = await copyForInspection(createdPaths, testInfo.title); await copyNexusDiagnostics(dir); } })` — copies whatever the run created, plus `NEXUS_PATH`'s daemon log/state JSON, into `tmp/<timestamp>_<test-title>/` for manual review *before* `afterAll`/global teardown deletes the originals. Always add this for a new scenario test; a failed classification/tagging assertion (or a timeout) is exactly the case you want the artifacts for.
 8. `afterAll` → `cleanupCreatedFiles(createdPaths)`, unconditional, same as the existing specs.
+
+## Keeping test data after a full run
+
+`npm test`'s `global-teardown.ts` only wipes the ephemeral Nexus install (`NEXUS_PATH`) and vault (`VAULT_PATH`) — it never touches Playwright's own output. So a full run already leaves the useful stuff on disk afterward, no flag needed:
+
+- `playwright-report/` — the HTML report (`npm run report` to open it).
+- `test-results/` — traces/videos/screenshots for failing tests (`trace`/`video`: `retain-on-failure`, `screenshot`: `only-on-failure` in `playwright.config.ts`).
+- `tmp/<timestamp>_<test-title>/` — a failing spec's own created files plus `NEXUS_PATH`'s `automation.log`/state JSON, copied there by `copyForInspection`/`copyNexusDiagnostics` in `afterEach`, *before* teardown deletes the originals.
+- `tmp/profile/resource-report.html` — the whole-run CPU/memory profile (`tests/helpers/profile.ts`), also embedded in the HTML report as `resource-usage.html`.
+
+None of the above is cleared by `npm test` or `npm run clean` — only re-running the suite (which overwrites `playwright-report/`/`test-results/`) or deleting `tmp/` by hand clears it.
 
 ## Notes / gotchas
 
