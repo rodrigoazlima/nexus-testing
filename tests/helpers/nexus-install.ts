@@ -9,7 +9,10 @@ import { ROOT_DIR, VAULT_PATH } from './config';
 // checked out on, regardless of invocation directory.
 export const NEXUS_PATH = path.resolve(process.env.NEXUS_PATH ?? path.join(ROOT_DIR, '.testing', 'nexus'));
 export const REPO_URL = 'https://github.com/rodrigoazlima/NexusCampaigns.git';
-export const BRANCH = 'master';
+// Lets a run target a feature branch of Nexus (e.g. to test against
+// in-progress agent changes) without editing this file. Read once at module
+// load, same as NEXUS_PATH/VAULT_PATH above — set NEXUS_BRANCH in .env.
+export const BRANCH = process.env.NEXUS_BRANCH ?? 'master';
 export const SETUP_SCRIPT = path.join(NEXUS_PATH, 'agents', 'runtime', 'tools', 'setup-service.ps1');
 export const REGISTRY_PATH = path.join(NEXUS_PATH, 'agents', 'registry.yaml');
 

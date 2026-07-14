@@ -23,6 +23,20 @@ Env vars (see `tests/helpers/config.ts`):
 | `POLL_INTERVAL_MS` | `5_000` | poll interval while waiting |
 | `TEST_TIMEOUT_MS` | `10 * 60_000` (10 min) | Playwright per-test timeout |
 | `NEXUS_PATH` | `./.testing/nexus` | Nexus codebase/service install used by `tests/global-setup.ts` / `tests/global-teardown.ts` (not read by the specs themselves). Must be NTFS — `setup-service.ps1` links agents via junctions, unsupported on exFAT. |
+| `NEXUS_BRANCH` | `master` | git branch/ref of `NexusCampaigns` that `installFresh()` clones into `NEXUS_PATH` (`tests/helpers/nexus-install.ts`). Set this to test against a feature branch instead of `master`. |
+
+## Running against a specific Nexus branch
+
+By default `installFresh()` clones `NexusCampaigns`'s `master` branch. To run the suite against a different branch (e.g. an in-progress agent change), set `NEXUS_BRANCH` in `.env` before `npm test`:
+
+```
+# .env
+NEXUS_BRANCH=my-feature-branch
+```
+
+`npm test` (and `test:pipeline:fast`/`test:pipeline:slow`) run through Playwright, which loads `.env` automatically before `global-setup.ts` calls `installFresh()` — the branch is passed straight to `git clone --branch <NEXUS_BRANCH> ...`, so a non-existent branch/ref fails the clone immediately with git's own error.
+
+`NEXUS_BRANCH` only matters for the clone step (`installFresh`), not `clearInstall`/`npm run clean` — those just uninstall/remove whatever is already at `NEXUS_PATH` regardless of which branch it came from. Also note `npm run clean` (`scripts/clean.ts`) runs via `tsx`, not Playwright, so it does **not** auto-load `.env`; export `NEXUS_BRANCH` (and any other vars you need it to see) in the shell if you're invoking it directly rather than through `npm test`.
 
 ## Running
 
