@@ -7,6 +7,11 @@ import { defineConfig, devices } from '@playwright/test';
 // -CleanInstall. A short ceiling fails fast so that's cheap to confirm.
 const TEST_TIMEOUT_MS = Number(process.env.TEST_TIMEOUT_MS ?? 10 * 60_000);
 
+// BROWSER picks the Playwright device/browser engine for all three projects.
+// Defaults to chromium; set BROWSER=firefox in .env to switch.
+const BROWSER = process.env.BROWSER ?? 'chromium';
+const DEVICE = BROWSER === 'firefox' ? devices['Desktop Firefox'] : devices['Desktop Chrome'];
+
 export default defineConfig({
   testDir: './tests',
   testMatch: '**/*.spec.ts',
@@ -56,17 +61,17 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...DEVICE },
       testIgnore: ['**/image-tags/**', '**/token.spec.ts'],
     },
     {
       name: 'image-tags',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...DEVICE },
       testMatch: '**/image-tags/**/*.spec.ts',
     },
     {
       name: 'token-after-image-tags',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...DEVICE },
       testMatch: '**/token.spec.ts',
       dependencies: ['image-tags'],
     },
