@@ -5,10 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -17,12 +17,13 @@ import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 // per-image tag ground truth for this fixture (only skeletor.jpg has one, via
 // bestiary-classification.spec.ts). Correct from observed output after the
 // first real run against the live daemon.
-const EXPECTED_TAGS = ['token', 'bow', 'weapon'];
+const EXPECTED_TAGS = ['item', 'bow', 'weapon', 'recurve', 'composite'];
 
 test.describe.serial('Image tags: bow.jpg -> vision draft', () => {
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -43,18 +44,19 @@ test.describe.serial('Image tags: bow.jpg -> vision draft', () => {
     await registerCreatedPaths(createdPaths);
   });
 
-  test('bow.jpg gets expected tags, name, and draft state', async () => {
+  test('bow.jpg gets expected name and draft state', async () => {
     const { randomName } = await test.step('drop bow.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('bow.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath, data: waitData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
     createdPaths.push(notePath, imagePath);
+    data = waitData;
     const noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
@@ -64,9 +66,16 @@ test.describe.serial('Image tags: bow.jpg -> vision draft', () => {
     await test.step('validate current state', () => {
       assertDraftInvariants(data, noteId);
     });
-
-    await test.step('validate tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'bow.jpg');
-    });
   });
+
+  // One test per expected tag (rather than a single assertTagsInclude loop)
+  // so a missing tag reports as its own failure instead of aborting the rest
+  // of the list on the first miss.
+  for (const tag of EXPECTED_TAGS) {
+    test(`bow.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
+    });
+  }
 });
