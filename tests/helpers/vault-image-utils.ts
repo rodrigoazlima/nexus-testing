@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import matter from 'gray-matter';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR, POLL_TIMEOUT_MS, POLL_INTERVAL_MS } from './config';
 
-const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures', 'test-images');
+export const FIXTURES_DIR = path.join(__dirname, '..', 'fixtures', 'test-images');
 
 // ponytail: FrontmatterData/snapshotDir/diffNewFiles/readFrontmatter are
 // duplicated from vault-utils.ts on purpose — vault-utils.ts re-exports this
@@ -59,10 +59,59 @@ export const IMAGE_CATEGORY_VOCAB =
   process.env.IMAGE_CATEGORY_VOCAB?.split(',').map((s) => s.trim()) ??
   (['portrait', 'body', 'battlemap', 'scene', 'token'] as const);
 
+// Per-run ledger of every fixture that entered the pipeline. Resolved at
+// call time (not module load) so unit tests can point it at a sandbox via
+// env. Cleared by global-setup.ts — its scope is exactly one run.
+export function uploadedFixturesLedgerPath(): string {
+  return (
+    process.env.UPLOADED_FIXTURES_LEDGER ?? path.join(__dirname, '..', '..', 'tmp', 'uploaded-fixtures.jsonl')
+  );
+}
+
+/**
+ * Every upload path in the suite funnels through copyFixtureWithRandomName
+ * (filesystem drops directly, dashboard uploads via their staging copy — see
+ * helpers/image-upload.ts), so this is the single choke point enforcing
+ * "no fixture enters the pipeline twice per run". The daemon dedupes inbox
+ * images by content, so a second copy of the same bytes silently changes
+ * what a spec is actually testing.
+ *
+ * ponytail: keyed on fixture filename, not sha256 — fixture bytes are unique
+ * today (audited 2026-07-15); switch to content keys if byte-identical
+ * fixtures ever land. Check-then-append is also not atomic across parallel
+ * workers: two specs uploading the same fixture in the same instant can both
+ * pass. The guard exists to catch static duplicates in the codebase, not to
+ * be a concurrency barrier.
+ */
+async function guardAgainstDuplicateUpload(fixtureName: string, allowDuplicate: boolean): Promise<void> {
+  const ledger = uploadedFixturesLedgerPath();
+  let raw = '';
+  try {
+    raw = await fs.readFile(ledger, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  const alreadyUploaded = raw
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => (JSON.parse(line) as { fixture: string }).fixture);
+  if (alreadyUploaded.includes(fixtureName) && !allowDuplicate) {
+    throw new Error(
+      `Image already uploaded: "${fixtureName}" entered the pipeline earlier this run (see ${ledger}). ` +
+        `Each spec must use a distinct fixture — pass { allowDuplicate: true } only when re-uploading is ` +
+        `the point of the test (image-duplication.spec.ts).`
+    );
+  }
+  await fs.mkdir(path.dirname(ledger), { recursive: true });
+  await fs.appendFile(ledger, JSON.stringify({ fixture: fixtureName, at: new Date().toISOString() }) + '\n', 'utf-8');
+}
+
 export async function copyFixtureWithRandomName(
   fixtureName: string,
-  destDir: string = INBOX_IMAGES_DIR
+  destDir: string = INBOX_IMAGES_DIR,
+  opts: { allowDuplicate?: boolean } = {}
 ): Promise<{ destPath: string; randomName: string }> {
+  await guardAgainstDuplicateUpload(fixtureName, opts.allowDuplicate ?? false);
   const ext = path.extname(fixtureName);
   const randomName = `IMG_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
   const srcPath = path.join(FIXTURES_DIR, fixtureName);

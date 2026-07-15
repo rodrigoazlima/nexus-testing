@@ -42,7 +42,7 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
 
   test('renames dropped sword image and produces an enriched draft note', async ({ page }) => {
     const { randomName } = await test.step('drop sword image under a random name', async () => {
-      const dropped = await copyFixtureWithRandomName('sword-test.jpg');
+      const dropped = await copyFixtureWithRandomName('sword-buster.webp');
       createdPaths.push(dropped.destPath);
       return dropped;
     });

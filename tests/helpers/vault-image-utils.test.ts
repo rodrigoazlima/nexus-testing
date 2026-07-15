@@ -15,6 +15,9 @@ const INBOX_DIR = path.join(TMP_ROOT, '00-Inbox', 'images');
 const PROCESSING_DIR = path.join(TMP_ROOT, '01-Processing');
 process.env.INBOX_IMAGES_DIR = INBOX_DIR;
 process.env.PROCESSING_DIR = PROCESSING_DIR;
+// Duplicate-upload guard ledger sandboxed under TMP_ROOT — beforeEach wipes
+// TMP_ROOT, so every test starts with an empty ledger.
+process.env.UPLOADED_FIXTURES_LEDGER = path.join(TMP_ROOT, 'uploaded-fixtures.jsonl');
 
 let vim: typeof import('./vault-image-utils');
 
@@ -80,8 +83,45 @@ describe('copyFixtureWithRandomName', () => {
   test('two calls produce different random names', async () => {
     const destDir = path.join(TMP_ROOT, 'dest-2');
     const a = await vim.copyFixtureWithRandomName('axe.jpg', destDir);
-    const b = await vim.copyFixtureWithRandomName('axe.jpg', destDir);
+    // allowDuplicate: the duplicate-upload guard (tested below) would reject
+    // the second copy — this test is only about name randomness.
+    const b = await vim.copyFixtureWithRandomName('axe.jpg', destDir, { allowDuplicate: true });
     assert.notEqual(a.randomName, b.randomName);
+  });
+});
+
+describe('duplicate-upload guard', () => {
+  test('second upload of the same fixture throws "Image already uploaded"', async () => {
+    const destDir = path.join(TMP_ROOT, 'dest-guard');
+    await vim.copyFixtureWithRandomName('axe.jpg', destDir);
+    await assert.rejects(
+      () => vim.copyFixtureWithRandomName('axe.jpg', destDir),
+      /Image already uploaded/
+    );
+  });
+
+  test('allowDuplicate: true bypasses the guard', async () => {
+    const destDir = path.join(TMP_ROOT, 'dest-guard-bypass');
+    await vim.copyFixtureWithRandomName('axe.jpg', destDir);
+    await assert.doesNotReject(() =>
+      vim.copyFixtureWithRandomName('axe.jpg', destDir, { allowDuplicate: true })
+    );
+  });
+
+  test('distinct fixtures pass the guard, and the ledger records each upload', async () => {
+    const destDir = path.join(TMP_ROOT, 'dest-guard-distinct');
+    await vim.copyFixtureWithRandomName('axe.jpg', destDir);
+    await assert.doesNotReject(() => vim.copyFixtureWithRandomName('bow.jpg', destDir));
+
+    const lines = fs
+      .readFileSync(vim.uploadedFixturesLedgerPath(), 'utf-8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { fixture: string });
+    assert.deepEqual(
+      lines.map((l) => l.fixture),
+      ['axe.jpg', 'bow.jpg']
+    );
   });
 });
 

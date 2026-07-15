@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { copyFixtureWithRandomName, registerCreatedPaths } from '../helpers/vault-utils';
-import { uploadViaButton, uploadViaDragAndDrop } from '../helpers/dashboard-ui';
+import { registerCreatedPaths } from '../helpers/vault-utils';
+import { ImageUpload } from '../helpers/image-upload';
 import { INBOX_IMAGES_DIR } from '../helpers/config';
 
 // Scoped fast: only proves the upload entry point lands the file and the
@@ -11,7 +11,10 @@ import { INBOX_IMAGES_DIR } from '../helpers/config';
 // (2026-07-07), so a full round-trip per entry point would cost up to 90min
 // each. image-processing.spec.ts already proves the full pipeline once via
 // a plain filesystem drop.
-const TMP_SOURCE_DIR = path.join(__dirname, 'fixtures', 'test-images', '.tmp');
+//
+// Distinct fixture per entry point (sword-test button, axe2 drag-and-drop):
+// the duplicate-upload guard in copyFixtureWithRandomName rejects a second
+// upload of the same fixture per run by design.
 
 test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
   const createdPaths: string[] = [];
@@ -23,13 +26,8 @@ test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
   });
 
   test('uploads sword image via the /gm/inbox Upload button', async ({ page }) => {
-    const { destPath: sourcePath, randomName } = await copyFixtureWithRandomName(
-      'sword-test.jpg',
-      TMP_SOURCE_DIR
-    );
+    const { sourcePath, randomName } = await ImageUpload.viaButton(page, 'sword-test.jpg');
     createdPaths.push(sourcePath);
-
-    await uploadViaButton(page, sourcePath);
 
     const landedPath = path.join(INBOX_IMAGES_DIR, randomName);
     await expect(async () => {
@@ -47,14 +45,9 @@ test.describe.serial('Inbox upload entry points (dashboard UI)', () => {
     ).toBeVisible();
   });
 
-  test('uploads sword image via drag-and-drop onto /gm/inbox', async ({ page }) => {
-    const { destPath: sourcePath, randomName } = await copyFixtureWithRandomName(
-      'sword-test.jpg',
-      TMP_SOURCE_DIR
-    );
+  test('uploads axe image via drag-and-drop onto /gm/inbox', async ({ page }) => {
+    const { sourcePath, randomName } = await ImageUpload.viaDragAndDrop(page, 'axe2.webp');
     createdPaths.push(sourcePath);
-
-    await uploadViaDragAndDrop(page, sourcePath);
 
     const landedPath = path.join(INBOX_IMAGES_DIR, randomName);
     await expect(async () => {
