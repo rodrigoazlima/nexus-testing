@@ -6,6 +6,7 @@ Playwright black-box tests for Nexus Campaigns image pipeline. Real daemon, real
 
 ```
 npm test          # global-setup (fresh install) -> specs -> global-teardown (uninstall)
+npm run test:keep # leave NEXUS_PATH + VAULT_PATH in place for inspection
 npm run test:unit # fast: mocked-exec tests of setup-service.ps1's arguments, no real install
 npm run report
 npm run clean     # wipe NEXUS_PATH + VAULT_PATH by hand

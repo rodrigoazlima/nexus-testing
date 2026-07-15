@@ -56,7 +56,7 @@ npm run report    # open the last HTML report
 
 1. **`tests/global-setup.ts`** — clears any dirty/leftover install (uninstalls the service if present, removes `NEXUS_PATH`), clones `NexusCampaigns` fresh, then runs `setup-service.ps1 -CleanInstall`. Same steps as `custom-install.ps1`, kept as our own TS copy rather than invoking that script directly. `setup-service.ps1` itself is the target repo's own installer, so it's still shelled out to as a subprocess. Afterwards, warns (doesn't fail the run) if no `.env.local` file exists anywhere under `NEXUS_PATH` — `-CleanInstall` wipes them and nothing recreates them, a suspected cause of silent vision-agent failures (see `performance-review-notes.md`).
 2. **the spec suite** — runs in full, against the freshly installed dashboard/daemon and `VAULT_PATH`.
-3. **`tests/global-teardown.ts`** — uninstalls the service and wipes `NEXUS_PATH`/`VAULT_PATH` (same steps as `scripts/clean.ts`), leaving `.testing` clean for the next run. Pass `--keep` (e.g. `npm test --keep`) to skip this step and leave the install/vault in place.
+3. **`tests/global-teardown.ts`** — uninstalls the service and wipes `NEXUS_PATH`/`VAULT_PATH` (same steps as `scripts/clean.ts`), leaving `.testing` clean for the next run. Run `npm run test:keep` to skip this step and leave the install/vault in place.
 
 Global setup/teardown run on every `playwright test` invocation (including filtered runs, e.g. `npx playwright test image-processing`).
 
@@ -149,7 +149,7 @@ Follow `tests/bestiary-classification.spec.ts` as the template. Structure:
 
 ## Keeping test data after a full run
 
-`npm test --keep` (or `npm run test:pipeline:fast --keep` / `:slow`) skips `global-teardown.ts`'s uninstall/wipe step entirely, leaving `NEXUS_PATH` and `VAULT_PATH` in place for inspection. npm turns the flag into an `npm_config_keep` env var, which `tests/global-setup.ts` and `tests/global-teardown.ts` both check — setup logs `[global-setup] --keep set, ...` at the start of the run so it's visible on the console immediately, not just at teardown. `scripts/clean.ts` still does a full wipe regardless, so run `npm run clean` by hand when you're done inspecting.
+`npm run test:keep` skips `global-teardown.ts`'s uninstall/wipe step entirely, leaving `NEXUS_PATH` and `VAULT_PATH` in place for inspection. The test runner consumes `--keep` and sets `NEXUS_TEST_KEEP` for `tests/global-setup.ts` and `tests/global-teardown.ts`, so npm does not treat it as an unknown configuration option and Playwright does not receive it as an unsupported CLI argument. `npm test -- --keep` remains available when you need to combine the flag with other Playwright options. Setup logs `[global-setup] --keep set, ...` at the start of the run so it's visible on the console immediately, not just at teardown. `scripts/clean.ts` still does a full wipe regardless, so run `npm run clean` by hand when you're done inspecting.
 
 `global-teardown.ts` normally only wipes the ephemeral Nexus install (`NEXUS_PATH`) and vault (`VAULT_PATH`) — it never touches Playwright's own output. So a full run already leaves the useful stuff on disk afterward even without `--keep`:
 

@@ -12,7 +12,7 @@ import { marker, startSampler } from './helpers/profile';
 // our own TS copy, not a call into that script.
 export default async function globalSetup(): Promise<void> {
   console.log(`[global-setup] target install: ${NEXUS_PATH}`);
-  if (process.env.npm_config_keep) {
+  if (process.env.NEXUS_TEST_KEEP) {
     console.log('[global-setup] --keep set, global-teardown will leave NEXUS_PATH and VAULT_PATH in place');
   }
 
