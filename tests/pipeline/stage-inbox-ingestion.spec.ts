@@ -15,10 +15,19 @@ import { INBOX_QUEUE_PATH, readJsonState, findEntryByFilename } from '../helpers
 
 const FIXTURE_PATH = path.join(__dirname, '..', 'fixtures', 'test-images', 'axe.jpg');
 
-// ponytail: tags beyond [0] are filename-guessed, not verified ground truth
-// (moved from the deleted tests/image-tags/axe.spec.ts). Correct from
-// observed output after the first real run against the live daemon.
-const EXPECTED_TAGS = ['token', 'axe', 'weapon'];
+// Verified 2026-07-15 by calling classify_images._classify_one() directly on
+// axe.jpg (bypassing this harness — the original "live daemon run" that
+// produced this same value was actually a cross-matched note from a
+// concurrent spec, see feedback/tips_to_fix.md issue #1; the value happened
+// to be right but the method wasn't). 4/4 direct-classification runs agreed.
+// VisionClassification (system/src/nexus/shared/models.py) has no item/weapon
+// vocabulary — ImageType is portrait/body/battlemap/scene only (LLM-chosen;
+// "token" is only ever forced post-hoc for transparent-corner PNGs, which a
+// .jpg can never be). A standalone object on a plain background falls into
+// "scene" per the classifier prompt's own definition ("objects" is listed
+// under scene), with "interior" as the environment guess. Do not change this
+// back to axe/weapon-flavored tags without re-verifying via direct classification.
+const EXPECTED_TAGS = ['scene', 'interior'];
 
 interface QueueEntry {
   agents: Record<string, string>;

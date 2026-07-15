@@ -95,6 +95,20 @@ export async function waitForSlugNote(
 ): Promise<WaitResult> {
   let result: WaitResult | undefined;
 
+  // Anchor to the dropped file's NTFS file ID before the daemon can rename
+  // it. The vault has no per-run isolation (workers:3 spec files share one
+  // vault — CLAUDE.md concurrency model), so filename-diffing alone can
+  // cross-match a concurrent spec's renamed image/note. Ingestion's
+  // emoji-strip and vision's slug-rename are both same-volume Path.rename()
+  // calls, which preserve NTFS file ID, so this stays valid across both
+  // renames. If the file's already been renamed by the time we get here
+  // (rare — daemon poll is much slower than this call), fall back to the
+  // pre-existing filename heuristic below.
+  const originalIno = await fs
+    .stat(path.join(INBOX_IMAGES_DIR, originalRandomName))
+    .then((s) => s.ino)
+    .catch(() => undefined);
+
   await expect(async () => {
     const [inboxNow, processingNow] = await Promise.all([
       snapshotDir(INBOX_IMAGES_DIR),
@@ -120,9 +134,23 @@ export async function waitForSlugNote(
         }
 
         const sourceList = Array.isArray(parsed.data.source) ? parsed.data.source : [];
-        const matchedImage = renamedCandidates.find((candidate) =>
+        let matchedImage = renamedCandidates.find((candidate) =>
           sourceList.some((src) => src.endsWith(candidate))
         );
+
+        // Disambiguate cross-matches from concurrent specs: a filename hit
+        // alone isn't enough proof this note came from *our* drop, so verify
+        // the candidate image is literally the same file, not just some
+        // other new file that happened to appear in the same poll window.
+        if (matchedImage && originalIno !== undefined) {
+          const candidateIno = await fs
+            .stat(path.join(INBOX_IMAGES_DIR, matchedImage))
+            .then((s) => s.ino)
+            .catch(() => undefined);
+          if (candidateIno !== originalIno) {
+            matchedImage = undefined;
+          }
+        }
 
         if (matchedImage) {
           result = {
