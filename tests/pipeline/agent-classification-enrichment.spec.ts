@@ -1,14 +1,14 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import path from 'node:path';
 import {
   snapshotDir,
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import {
@@ -30,6 +30,8 @@ test.describe.serial('classification-agent: tag/type enrichment + processed-imag
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let imagePath: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -50,28 +52,36 @@ test.describe.serial('classification-agent: tag/type enrichment + processed-imag
     await registerCreatedPaths(createdPaths);
   });
 
-  test('elf-warrior image gets full tags and an ok processed-images.json entry', async () => {
+  test('elf-warrior image gets a fresh, valid draft', async () => {
     const { randomName } = await test.step('drop elf-warrior.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('elf-warrior.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath: freshImagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(notePath, freshImagePath);
+    imagePath = freshImagePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants', () => {
       const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'elf-warrior.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`elf-warrior.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
+  test('elf-warrior image gets an ok processed-images.json entry', async () => {
     await test.step('assert classification-agent recorded an ok processed-images.json entry', async () => {
       const finalName = path.basename(imagePath);
       await pollJsonState<unknown>(

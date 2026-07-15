@@ -6,10 +6,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -22,6 +22,8 @@ test.describe.serial('token-agent: portrait image gets a circular token generate
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let imagePath: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -42,18 +44,20 @@ test.describe.serial('token-agent: portrait image gets a circular token generate
     await registerCreatedPaths(createdPaths);
   });
 
-  test('heman-barbarian1 portrait produces a sibling {stem}-token.png', async () => {
+  test('heman-barbarian1 image gets a fresh, valid draft', async () => {
     const { randomName } = await test.step('drop heman-barbarian1.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('heman-barbarian1.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath: freshImagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(notePath, freshImagePath);
+    imagePath = freshImagePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants', () => {
       const noteId = path.basename(notePath, '.md');
@@ -66,14 +70,20 @@ test.describe.serial('token-agent: portrait image gets a circular token generate
         `tags[0] — expected one of: ["portrait", "body"], actual: "${data.tags[0]}"`
       ).toContain(data.tags[0]);
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'heman-barbarian1.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`heman-barbarian1.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
-    // ponytail: 3min ceiling, same reasoning as bestiary-classification.spec.ts
-    // — token-agent runs the same cycle right after vision (registry.yaml
-    // execution_order), and it's CV-only (llm: none) so should be fast.
+  // ponytail: 3min ceiling, same reasoning as bestiary-classification.spec.ts
+  // — token-agent runs the same cycle right after vision (registry.yaml
+  // execution_order), and it's CV-only (llm: none) so should be fast.
+  test('heman-barbarian1 portrait produces a sibling {stem}-token.png', async () => {
     await test.step('wait for token-agent to generate the sibling token image', async () => {
       const stem = path.basename(imagePath, path.extname(imagePath));
       const tokenPath = path.join(INBOX_IMAGES_DIR, `${stem}-token.png`);

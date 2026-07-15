@@ -5,10 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from './helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from './helpers/config';
 
@@ -25,6 +25,7 @@ test.describe.serial('Rename scenario: random source filename must not leak into
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -52,11 +53,12 @@ test.describe.serial('Rename scenario: random source filename must not leak into
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
     createdPaths.push(notePath, imagePath);
+    data = freshData;
     const noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
@@ -85,9 +87,13 @@ test.describe.serial('Rename scenario: random source filename must not leak into
     await test.step('validate current state', () => {
       assertDraftInvariants(data, noteId);
     });
-
-    await test.step('validate tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, FIXTURE);
-    });
   });
+
+  for (const tag of EXPECTED_TAGS) {
+    test(`${FIXTURE} tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
+    });
+  }
 });

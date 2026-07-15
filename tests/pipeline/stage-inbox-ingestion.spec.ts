@@ -5,10 +5,10 @@ import {
   snapshotDir,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { INBOX_QUEUE_PATH, readJsonState, findEntryByFilename } from '../helpers/nexus-state';
@@ -37,6 +37,8 @@ test.describe.serial('Ingestion stage: messy filename -> normalized + queued for
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let imagePath: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -57,7 +59,7 @@ test.describe.serial('Ingestion stage: messy filename -> normalized + queued for
     await registerCreatedPaths(createdPaths);
   });
 
-  test('messy-named drop is normalized by ingestion and queued image-type-only for vision/lore/classification', async () => {
+  test('messy-named drop is normalized by ingestion and vision writes a fresh draft', async () => {
     // Deliberately messy name (spaces + emoji) — ingestion's job is to strip
     // this before vision ever sees the file (agents/ingestion/AGENT.md).
     const messyName = `IMG \u{1F5E1}️ ${Date.now()} test.jpg`;
@@ -69,21 +71,29 @@ test.describe.serial('Ingestion stage: messy filename -> normalized + queued for
       createdPaths.push(destPath);
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath: freshImagePath, data: freshData } = await test.step(
       'wait for ingestion to normalize + queue the file, and vision to rename it again into a draft',
       () => waitForSlugNote(messyName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(notePath, freshImagePath);
+    imagePath = freshImagePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants', () => {
       const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'axe.jpg (messy filename)');
+  for (const tag of EXPECTED_TAGS) {
+    test(`axe.jpg (messy filename) tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
+  test('inbox-queue.json registered this image with the right agent slots', async () => {
     await test.step('assert inbox-queue.json registered this image with the right agent slots', async () => {
       const queue = await readJsonState<unknown>(INBOX_QUEUE_PATH);
       const entry = findEntryByFilename<QueueEntry>(queue, path.basename(imagePath));

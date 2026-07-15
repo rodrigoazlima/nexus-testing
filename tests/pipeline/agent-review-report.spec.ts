@@ -6,11 +6,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   pollNoteUntil,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { REPORTS_DIR } from '../helpers/nexus-state';
@@ -24,6 +24,8 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let notePath: string;
   let dropTime: number;
 
   test.beforeAll(async () => {
@@ -45,7 +47,7 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
     await registerCreatedPaths(createdPaths);
   });
 
-  test('half-orc draft gets suggestedQuality injected and the daily report refreshes', async () => {
+  test('half-orc draft starts at quality: 0 with no suggestedQuality yet', async () => {
     dropTime = Date.now();
     const { randomName } = await test.step('drop half-orc.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('half-orc.jpg');
@@ -53,11 +55,13 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath: freshNotePath, imagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(freshNotePath, imagePath);
+    notePath = freshNotePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants (quality: 0, no suggestedQuality yet)', () => {
       const noteId = path.basename(notePath, '.md');
@@ -67,11 +71,17 @@ test.describe.serial('review-agent: quality-0 draft gets a suggestedQuality + fr
         `suggestedQuality — expected: undefined (injected later by review-agent), actual: ${JSON.stringify(data.suggestedQuality)}`
       ).toBeUndefined();
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'half-orc.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`half-orc.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
+  test('half-orc draft gets suggestedQuality injected and the daily report refreshes', async () => {
     await test.step('wait for review-agent to inject suggestedQuality', () =>
       pollNoteUntil(
         notePath,

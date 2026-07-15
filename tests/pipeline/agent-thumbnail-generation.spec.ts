@@ -6,10 +6,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { THUMBS_DIR, computeSha1 } from '../helpers/nexus-state';
@@ -30,6 +30,8 @@ test.describe.serial(
     const createdPaths: string[] = [];
     let inboxBaseline: Set<string>;
     let processingBaseline: Set<string>;
+    let data: FrontmatterData;
+    let sha1: string;
 
     test.beforeAll(async () => {
       inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -50,30 +52,39 @@ test.describe.serial(
       await registerCreatedPaths(createdPaths);
     });
 
-    test('florest-cave.jpg gets expected tags and a thumbs/<sha1>.webp cache entry', async () => {
-      test.setTimeout(30 * 60_000);
-
-      const { randomName, sha1 } = await test.step('drop florest-cave.jpg and hash its bytes', async () => {
+    test('florest-cave.jpg gets a fresh, valid draft', async () => {
+      const { randomName, sha1: freshSha1 } = await test.step('drop florest-cave.jpg and hash its bytes', async () => {
         const { destPath, randomName } = await copyFixtureWithRandomName('florest-cave.jpg');
         createdPaths.push(destPath);
         const sha1 = await computeSha1(destPath);
         return { randomName, sha1 };
       });
+      sha1 = freshSha1;
 
-      const { notePath, imagePath, data } = await test.step(
+      const { notePath, imagePath, data: freshData } = await test.step(
         'wait for the vision daemon to rename the image and write a draft note',
         () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
       );
       createdPaths.push(notePath, imagePath);
+      data = freshData;
 
       await test.step('assert frontmatter invariants', () => {
         const noteId = path.basename(notePath, '.md');
         assertDraftInvariants(data, noteId);
       });
+    });
 
-      await test.step('assert tags', () => {
-        assertTagsInclude(data.tags, EXPECTED_TAGS, 'florest-cave.jpg');
+    for (const tag of EXPECTED_TAGS) {
+      test(`florest-cave.jpg tags include "${tag}"`, () => {
+        expect(
+          data.tags,
+          `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`
+        ).toContain(tag);
       });
+    }
+
+    test('florest-cave.jpg gets a thumbs/<sha1>.webp cache entry', async () => {
+      test.setTimeout(30 * 60_000);
 
       await test.step('wait for thumbnails-agent to write the cached thumbnail', async () => {
         const thumbPath = path.join(THUMBS_DIR, `${sha1}.webp`);

@@ -5,10 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -23,6 +23,7 @@ test.describe.serial('Image tags: two-characters-skeletor-and-Hordakr.jpg -> vis
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -43,18 +44,19 @@ test.describe.serial('Image tags: two-characters-skeletor-and-Hordakr.jpg -> vis
     await registerCreatedPaths(createdPaths);
   });
 
-  test('two-characters-skeletor-and-Hordakr.jpg gets expected tags, name, and draft state', async () => {
+  test('two-characters-skeletor-and-Hordakr.jpg gets expected name and draft state', async () => {
     const { randomName } = await test.step('drop two-characters-skeletor-and-Hordakr.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('two-characters-skeletor-and-Hordakr.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath, imagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
     createdPaths.push(notePath, imagePath);
+    data = freshData;
     const noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
@@ -64,9 +66,13 @@ test.describe.serial('Image tags: two-characters-skeletor-and-Hordakr.jpg -> vis
     await test.step('validate current state', () => {
       assertDraftInvariants(data, noteId);
     });
-
-    await test.step('validate tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'two-characters-skeletor-and-Hordakr.jpg');
-    });
   });
+
+  for (const tag of EXPECTED_TAGS) {
+    test(`two-characters-skeletor-and-Hordakr.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
+    });
+  }
 });

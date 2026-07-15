@@ -6,11 +6,11 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   readFrontmatter,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 import { promoteToLibrary, archiveNote } from '../helpers/nexus-state';
@@ -28,6 +28,8 @@ test.describe.serial('99-Archive stage: retiring an approved note sets status: a
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let notePath: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -48,28 +50,36 @@ test.describe.serial('99-Archive stage: retiring an approved note sets status: a
     await registerCreatedPaths(createdPaths);
   });
 
-  test('archived note keeps valid frontmatter at its new 99-Archive path', async () => {
+  test('presto-magician image gets a fresh, valid draft', async () => {
     const { randomName } = await test.step('drop presto-magician image under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('presto-magician.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath: freshNotePath, imagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(freshNotePath, imagePath);
+    notePath = freshNotePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants on the fresh draft', () => {
       const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'presto-magician.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`presto-magician.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
+  test('archived note keeps valid frontmatter at its new 99-Archive path', async () => {
     const { libraryNotePath } = await test.step(
       'simulate human review: approve + promote into 02-Library',
       () => promoteToLibrary(notePath)

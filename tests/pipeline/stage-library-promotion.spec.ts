@@ -5,10 +5,10 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { openNoteByUuid, assertNoteMatchesFrontmatter } from '../helpers/dashboard-ui';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
@@ -27,6 +27,9 @@ test.describe.serial('02-Library stage: human promotion sets status: approved', 
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let notePath: string;
+  let imagePath: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -47,30 +50,37 @@ test.describe.serial('02-Library stage: human promotion sets status: approved', 
     await registerCreatedPaths(createdPaths);
   });
 
-  test('promoted note shows approved status and Library location in the dashboard', async ({
-    page,
-  }) => {
+  test('bobby-barbarian image gets a fresh, valid draft', async () => {
     const { randomName } = await test.step('drop bobby-barbarian image under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('bobby-barbarian.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath: freshNotePath, imagePath: freshImagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
+    createdPaths.push(freshNotePath, freshImagePath);
+    notePath = freshNotePath;
+    imagePath = freshImagePath;
+    data = freshData;
 
     await test.step('assert frontmatter invariants on the fresh draft', () => {
       const noteId = path.basename(notePath, '.md');
       assertDraftInvariants(data, noteId);
     });
+  });
 
-    await test.step('assert tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'bobby-barbarian.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`bobby-barbarian.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
+  test('promoted note shows approved status and Library location in the dashboard', async ({ page }) => {
     const { libraryNotePath, data: promotedData } = await test.step(
       'simulate human review: approve + promote into 02-Library',
       () => promoteToLibrary(notePath)

@@ -5,12 +5,12 @@ import {
   copyFixtureWithRandomName,
   waitForSlugNote,
   assertDraftInvariants,
-  assertTagsInclude,
   pollNoteUntil,
   copyForInspection,
   copyNexusDiagnostics,
   registerCreatedPaths,
   BESTIARY_TYPES,
+  type FrontmatterData,
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
@@ -25,6 +25,9 @@ test.describe.serial('Image tags: dragon-blue.jpg -> vision draft', () => {
   const createdPaths: string[] = [];
   let inboxBaseline: Set<string>;
   let processingBaseline: Set<string>;
+  let data: FrontmatterData;
+  let notePath: string;
+  let noteId: string;
 
   test.beforeAll(async () => {
     inboxBaseline = await snapshotDir(INBOX_IMAGES_DIR);
@@ -45,21 +48,21 @@ test.describe.serial('Image tags: dragon-blue.jpg -> vision draft', () => {
     await registerCreatedPaths(createdPaths);
   });
 
-  test('dragon-blue.jpg gets expected tags, name, and draft state, and lands in the bestiary', async ({
-    page,
-  }) => {
+  test('dragon-blue.jpg gets expected name and draft state', async () => {
     const { randomName } = await test.step('drop dragon-blue.jpg under a random name', async () => {
       const dropped = await copyFixtureWithRandomName('dragon-blue.jpg');
       createdPaths.push(dropped.destPath);
       return dropped;
     });
 
-    const { notePath, imagePath, data } = await test.step(
+    const { notePath: freshNotePath, imagePath, data: freshData } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)
     );
-    createdPaths.push(notePath, imagePath);
-    const noteId = path.basename(notePath, '.md');
+    createdPaths.push(freshNotePath, imagePath);
+    notePath = freshNotePath;
+    data = freshData;
+    noteId = path.basename(notePath, '.md');
 
     await test.step('validate name', () => {
       expect(data.id, `id — expected: "${noteId}" (note filename stem), actual: "${data.id}"`).toBe(noteId);
@@ -68,13 +71,19 @@ test.describe.serial('Image tags: dragon-blue.jpg -> vision draft', () => {
     await test.step('validate current state', () => {
       assertDraftInvariants(data, noteId);
     });
+  });
 
-    await test.step('validate tags', () => {
-      assertTagsInclude(data.tags, EXPECTED_TAGS, 'dragon-blue.jpg');
+  for (const tag of EXPECTED_TAGS) {
+    test(`dragon-blue.jpg tags include "${tag}"`, () => {
+      expect(data.tags, `tags — expected to include "${tag}", actual: [${(data.tags ?? []).join(', ')}]`).toContain(
+        tag
+      );
     });
+  }
 
-    // ponytail: 3min ceiling matches bestiary-classification.spec.ts — this
-    // agent is due immediately after vision, so a tight budget fails fast.
+  // ponytail: 3min ceiling matches bestiary-classification.spec.ts — this
+  // agent is due immediately after vision, so a tight budget fails fast.
+  test('dragon-blue.jpg gets classified into the bestiary and shows on the dashboard', async ({ page }) => {
     const { data: enrichedData } = await test.step(
       'wait for the classification agent to place dragon-blue.jpg in the bestiary',
       () =>
