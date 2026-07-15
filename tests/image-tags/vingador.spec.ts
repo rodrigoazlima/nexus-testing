@@ -12,12 +12,12 @@ import {
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
-// ponytail: tags beyond [0] (the category) are guessed from the filename, not
-// verified against real vision-agent output — GRAPH_REPORT.md carries no
-// per-image tag ground truth for this fixture (only skeletor.jpg has one, via
-// bestiary-classification.spec.ts). Correct from observed output after the
-// first real run against the live daemon.
-const EXPECTED_TAGS = ['portrait'];
+// tags[0] confirmed against real vision-agent output (2026-07-14 run):
+// full-body standing figure -> "body", not "portrait". Rest of tags beyond
+// [0] still filename-guessed — GRAPH_REPORT.md carries no per-image tag
+// ground truth for this fixture (only skeletor.jpg has one, via
+// bestiary-classification.spec.ts).
+const EXPECTED_TAGS = ['body'];
 
 test.describe.serial('Image tags: vingador.jpg -> vision draft', () => {
   const createdPaths: string[] = [];

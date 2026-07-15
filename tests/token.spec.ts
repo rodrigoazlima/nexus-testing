@@ -22,12 +22,12 @@ import { INBOX_IMAGES_DIR, PROCESSING_DIR } from './helpers/config';
 // agent-token-generation.spec.ts). Tags beyond tags[0] are filename-guessed,
 // same caveat as the image-tags specs these mirror.
 const TOKEN_ELIGIBLE_FIXTURES: { fixture: string; expectedTags: string[] }[] = [
-  { fixture: 'eirc-cavalier.jpg', expectedTags: ['portrait', 'cavalier'] },
-  { fixture: 'elf-ranger.jpg', expectedTags: ['portrait', 'elf', 'ranger'] },
-  { fixture: 'hank-ranger.jpg', expectedTags: ['portrait', 'ranger'] },
-  { fixture: 'heman-barbarian2.jpg', expectedTags: ['portrait', 'barbarian'] },
-  { fixture: 'heman-barbarian3.jpg', expectedTags: ['portrait', 'barbarian'] },
-  { fixture: 'vingador.jpg', expectedTags: ['portrait'] },
+  { fixture: 'eirc-cavalier.jpg', expectedTags: ['body', 'cavalier'] },
+  { fixture: 'elf-ranger.jpg', expectedTags: ['body', 'elf', 'ranger'] },
+  { fixture: 'hank-ranger.jpg', expectedTags: ['body', 'ranger'] },
+  { fixture: 'heman-barbarian2.jpg', expectedTags: ['body', 'barbarian'] },
+  { fixture: 'heman-barbarian3.jpg', expectedTags: ['body', 'barbarian'] },
+  { fixture: 'vingador.jpg', expectedTags: ['body'] },
   { fixture: 'dragon-blue.jpg', expectedTags: ['body', 'dragon', 'blue'] },
   { fixture: 'dragon-red.jpg', expectedTags: ['body', 'dragon', 'red'] },
   { fixture: 'dragon-white.jpg', expectedTags: ['body', 'dragon', 'white'] },
