@@ -6,6 +6,7 @@
   "scripts": {
     "test": "tsx scripts/run-playwright.ts --grep-invert @slow-agent",
     "test:keep": "tsx scripts/run-playwright.ts --grep-invert @slow-agent --keep",
+    "test:only": "tsx scripts/run-playwright.ts --only",
     "test:pipeline:fast": "tsx scripts/run-playwright.ts tests/pipeline --grep-invert @slow-agent",
     "test:pipeline:slow": "tsx scripts/run-playwright.ts tests/pipeline --grep @slow-agent --workers=4",
     "test:unit": "node --import dotenv/config --import tsx --test tests/helpers/*.test.ts",

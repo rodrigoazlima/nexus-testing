@@ -14,6 +14,7 @@ cp .env.example .env          # then edit as needed
 
 npm test                      # global-setup (fresh install) -> full suite (excludes @slow-agent) -> global-teardown (uninstall)
 npm run test:keep             # retain NEXUS_PATH + VAULT_PATH for inspection
+npm run test:only -- <specs>  # global-setup -> named specs + required cleanup spec (stage-inbox-exclusion) -> global-teardown; add --keep to retain artifacts and skip the cleanup spec
 npm run test:pipeline:fast    # tests/pipeline only, excludes @slow-agent
 npm run test:pipeline:slow    # tests/pipeline only, @slow-agent tests only
 npm run test:unit             # fast unit tests (Node's test runner via tsx, not Playwright) for setup-service.ps1 arg construction — no real install

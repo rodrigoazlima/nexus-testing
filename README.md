@@ -46,6 +46,7 @@ If a run still clones `master` after setting `NEXUS_BRANCH`, check (in order): t
 
 ```
 npm test          # global setup (fresh install) -> full suite -> global teardown (uninstall)
+npm run test:only -- <specs>  # same lifecycle, but only the named specs + the required cleanup spec (stage-inbox-exclusion); --keep retains artifacts and skips the cleanup spec
 npm run test:unit # fast unit tests for setup-service.ps1's argument construction (no real install)
 npm run report    # open the last HTML report
 ```
