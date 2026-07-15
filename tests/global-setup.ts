@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import {
   NEXUS_PATH,
   clearInstall,
@@ -5,6 +6,7 @@ import {
   warnIfEnvLocalMissing,
   withInstallLock,
 } from './helpers/nexus-install';
+import { uploadedFixturesLedgerPath } from './helpers/vault-image-utils';
 import { marker, startSampler } from './helpers/profile';
 
 // Fresh-installs Nexus before the suite runs: clear any dirty/leftover
@@ -30,6 +32,10 @@ export default async function globalSetup(): Promise<void> {
     installFresh();
   });
   marker('install', 'end');
+
+  // The duplicate-upload guard's ledger scopes to one run — stale entries
+  // from a previous run would false-positive every spec's first upload.
+  fs.rmSync(uploadedFixturesLedgerPath(), { force: true });
 
   warnIfEnvLocalMissing();
   console.log('[global-setup] environment ready');

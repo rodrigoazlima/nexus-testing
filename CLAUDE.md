@@ -84,6 +84,10 @@ Because the pipeline can't be force-triggered (the daemon lives out-of-scope at 
 
 `playwright.config.ts`: `workers: 3`, `fullyParallel: false` — spec **files** run in parallel, tests **within** a file stay in written order (matches `describe.serial`). All specs share one real vault with no per-run isolation, so `waitForSlugNote`'s baseline-diff can theoretically cross-match another spec's renamed file if two drops land close together — an accepted risk, not a bug to fix by adding retries.
 
+Three Playwright projects: `chromium` (everything else), `image-tags` (`tests/image-tags/`), and `token-after-image-tags` (`tests/token.spec.ts`, `dependencies: ['image-tags']`). `token.spec.ts` uploads nothing — it byte-matches the inbox images the image-tags specs already uploaded, so it must run strictly after that project. Dependency projects ignore CLI filters: `test:only tests/token.spec.ts` runs all image-tags specs first (intended); a filter matching neither project (e.g. `test:pipeline:*`) skips both.
+
+Every upload funnels through `copyFixtureWithRandomName`, which rejects a second upload of the same fixture per run (ledger `tmp/uploaded-fixtures.jsonl`, cleared by global-setup) unless `{ allowDuplicate: true }` — only `tests/pipeline/image-duplication.spec.ts` passes that, to pin the system's own dedupe (second copy ignored + "Image already uploaded" warning). Dashboard uploads go through the `ImageUpload` class (`tests/helpers/image-upload.ts`: `drop` / `viaButton` / `viaDragAndDrop`). One fixture per spec — see `fixture-image-usage.md` for the current map.
+
 `@slow-agent` tag marks tests gated on long daemon intervals (900s+ vision/scheduled-agent cycles); `npm test` and `test:pipeline:fast` exclude them, `test:pipeline:slow` runs only them. See `parallel-plan.md` for the current analysis of parallelizing the slow tests (bottleneck is the daemon's `pipeline_mode:sync` scheduler, not Playwright worker count).
 
 ## Hard rules (from AGENTS.md)

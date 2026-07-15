@@ -37,14 +37,38 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }], ['./scripts/profile-reporter.ts']],
   use: {
     baseURL: process.env.DASHBOARD_URL ?? 'http://localhost:48080',
+    // Default headed so runs are watchable; set HEADLESS=1 (e.g. CI) to override.
+    headless: process.env.HEADLESS === '1',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
   },
+  // Three projects to give token.spec.ts a hard ordering guarantee: it drops
+  // no images itself, it byte-matches the ones the image-tags specs already
+  // uploaded, so it must start only after ALL of image-tags finished.
+  // Verified against the bundled runner source (lib/runner/index.js):
+  //  - a CLI file/grep filter that matches nothing in a project simply skips
+  //    that project AND its dependencies (test:pipeline:* behave as before);
+  //  - a filter that matches token.spec.ts pulls the whole image-tags project
+  //    in as a dependency, unfiltered — `test:only tests/token.spec.ts` runs
+  //    all 9+ image-tags specs first, which is exactly what token needs;
+  //  - if any image-tags spec fails, the token project is skipped.
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      testIgnore: ['**/image-tags/**', '**/token.spec.ts'],
+    },
+    {
+      name: 'image-tags',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: '**/image-tags/**/*.spec.ts',
+    },
+    {
+      name: 'token-after-image-tags',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: '**/token.spec.ts',
+      dependencies: ['image-tags'],
     },
   ],
 });
