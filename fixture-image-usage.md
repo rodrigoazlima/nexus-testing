@@ -12,7 +12,7 @@ Every upload routes through `copyFixtureWithRandomName` (directly or via the `Im
 | `bow.jpg` | `tests/image-tags/bow.spec.ts` | also a name literal in the guard unit tests (no real drop) |
 | `city-battlemap.jpg` | `tests/image-tags/city-battlemap.spec.ts` | |
 | `diana-acrobat.jpg` | `tests/pipeline/agent-lore-npc-generation.spec.ts` | |
-| `dragon-blue.jpg` | `tests/image-tags/dragon-blue.spec.ts` | token.spec.ts validates the upload, drops nothing |
+| `dragon-blue.jpg` | `tests/token-dragon-blue.spec.ts` | self-contained: uploads, validates the draft/tags/bestiary AND the sibling token (size tolerance + face-point sanity) in one spec — not part of the image-tags/token.spec.ts split |
 | `dragon-red-mountains.jpg` | `tests/image-tags/dragon-red-mountains.spec.ts` | |
 | `dragon-red.jpg` | `tests/image-tags/dragon-red.spec.ts` | token.spec.ts validates the upload, drops nothing |
 | `dragon-white.jpg` | `tests/image-tags/dragon-white.spec.ts` | token.spec.ts validates the upload, drops nothing |
