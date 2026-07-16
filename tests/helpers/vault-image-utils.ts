@@ -121,6 +121,18 @@ export async function copyFixtureWithRandomName(
   return { destPath, randomName };
 }
 
+/** Width/height from the PNG IHDR chunk (fixed offset, bytes 16-23) — no image library needed for a single dimension check. */
+export async function readPngDimensions(filePath: string): Promise<{ width: number; height: number }> {
+  const fh = await fs.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(24);
+    await fh.read(buf, 0, 24, 0);
+    return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  } finally {
+    await fh.close();
+  }
+}
+
 export interface WaitResult {
   notePath: string;
   imagePath: string;

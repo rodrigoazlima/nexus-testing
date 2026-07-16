@@ -36,7 +36,6 @@ const TOKEN_ELIGIBLE_FIXTURES: string[] = [
   'heman-barbarian2.jpg',
   'heman-barbarian3.jpg',
   'vingador.jpg',
-  'dragon-blue.jpg',
   'dragon-red.jpg',
   'dragon-white.jpg',
 ];

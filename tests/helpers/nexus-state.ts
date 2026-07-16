@@ -29,6 +29,43 @@ export const REPORTS_DIR = process.env.REPORTS_DIR ?? path.join(NEXUS_PATH, 'age
 export const THUMBS_DIR = process.env.THUMBS_DIR ?? path.join(NEXUS_PATH, 'system', 'state', 'thumbs');
 export const DAEMON_LOGS_DIR =
   process.env.DAEMON_LOGS_DIR ?? path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'logs');
+// Token worker state (nexus/workers/token.py: _CONFIG_FILE / _GEN_TOKENS) —
+// confirmed against a live install 2026-07-15 while investigating the
+// body-dragon-air token (docs/dev-feedback/02-dragon-air.md).
+export const TOKEN_CONFIG_PATH =
+  process.env.TOKEN_CONFIG_PATH ??
+  path.join(NEXUS_PATH, 'system', 'state', 'workers', 'token', '10-generate-tokens.json');
+export const GENERATED_TOKENS_PATH =
+  process.env.GENERATED_TOKENS_PATH ??
+  path.join(NEXUS_PATH, 'system', 'state', 'workers', 'token', 'generated-tokens.json');
+
+export interface TokenConfig {
+  size: number;
+  padding: number;
+  forehead_ratio: number;
+  body_ratio: number;
+  focus_head: number[];
+  moldura_path: string;
+  moldura_by_type: Record<string, string>;
+}
+
+export interface GeneratedTokenEntry {
+  sourcePath: string;
+  tokenPath: string;
+  generatedAt: string;
+}
+
+// Center-point face box token.py stores back onto the source image's vision
+// entry (_store_face) — absent when no face was detected (upper-center
+// fallback crop used instead), which is a valid, expected outcome, not a bug.
+export interface VisionFace {
+  cx: number;
+  cy: number;
+  w: number;
+  h: number;
+  img_w: number;
+  img_h: number;
+}
 
 export async function readJsonState<T>(absPath: string): Promise<T> {
   const raw = await fs.readFile(absPath, 'utf-8');
