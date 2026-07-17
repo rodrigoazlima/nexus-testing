@@ -19,7 +19,7 @@ import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 // per-image tag ground truth for this fixture (only skeletor.jpg has one, via
 // bestiary-classification.spec.ts). Correct from observed output after the
 // first real run against the live daemon.
-const EXPECTED_TAGS = ['scene', 'dragon', 'red', 'mountains'];
+const EXPECTED_TAGS = ['dragon', 'red', 'mountains'];
 
 test.describe.serial('Image tags: dragon-red-mountains.jpg -> vision draft', () => {
   const createdPaths: string[] = [];

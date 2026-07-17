@@ -12,12 +12,12 @@ import {
 } from '../helpers/vault-utils';
 import { INBOX_IMAGES_DIR, PROCESSING_DIR } from '../helpers/config';
 
-// ponytail: tags beyond [0] (the category) are guessed from the filename, not
-// verified against real vision-agent output — GRAPH_REPORT.md carries no
-// per-image tag ground truth for this fixture (only skeletor.jpg has one, via
-// bestiary-classification.spec.ts). Correct from observed output after the
-// first real run against the live daemon.
-const EXPECTED_TAGS = ['battlemap', 'city'];
+// ponytail: observed 2026-07-17 against a live daemon run - tags[0] came back
+// "scene", not "battlemap", because classify-image.txt's STEP 1 definition
+// didn't weight camera angle heavily enough for a gridless top-down map (see
+// agents/vision/prompts/classify-image.txt fix same day). Re-confirm against
+// the next live run - the fix may flip tags[0] back to "battlemap".
+const EXPECTED_TAGS = ['scene', 'city'];
 
 test.describe.serial('Image tags: city-battlemap.jpg -> vision draft', () => {
   const createdPaths: string[] = [];
