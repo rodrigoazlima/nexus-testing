@@ -71,7 +71,36 @@ export function clearInstall(): void {
   }
   if (fs.existsSync(NEXUS_PATH)) {
     console.log(`removing old codebase at ${NEXUS_PATH}`);
-    fs.rmSync(NEXUS_PATH, { recursive: true, force: true });
+    removeDirWithRetry(NEXUS_PATH);
+  }
+}
+
+// A prior interrupted run can leave something holding an open handle inside
+// NEXUS_PATH even with no service installed — observed 2026-07-19: an empty
+// leftover dir, rmSync failing EPERM/"used by another process", root cause
+// wslhost.exe (WSL had touched the path via /mnt/c). maxRetries/retryDelay
+// covers transient locks (AV scan etc); a lock that outlives that is
+// probably a live process (WSL, an orphaned shell cwd'd into the dir, a
+// leftover playwright test-server) — surface how to find/clear it instead
+// of a bare EPERM stack trace. Not auto-running `wsl --shutdown` here: it
+// kills every WSL distro on the box, too destructive to do silently as a
+// side effect of a test run.
+function removeDirWithRetry(dir: string): void {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+  } catch (err) {
+    if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+    throw new Error(
+      `${dir} is locked by another process and could not be removed (likely leftover from ` +
+        `a prior interrupted run). Try:\n` +
+        `  - 'wsl --shutdown' if WSL is installed (wslhost.exe holding a handle into the path ` +
+        `has been the cause before)\n` +
+        `  - closing any terminal/Explorer window whose cwd is inside ${dir}\n` +
+        `  - killing an orphaned 'playwright test-server' process (VS Code Playwright extension)\n` +
+        `  - Sysinternals handle.exe to find the exact owner: ` +
+        `handle64.exe -accepteula -nobanner "${dir}"\n` +
+        `Original error: ${err}`
+    );
   }
 }
 
