@@ -1,0 +1,12 @@
+{
+  // .testing/ is wiped and recreated by every test run (global-setup/teardown,
+  // npm run clean). VSCode's recursive file watcher opening handles into it
+  // is what was leaving Code.exe as the last holder blocking rmSync during
+  // clearInstall — see tests/helpers/dir-lock-cleanup.ts.
+  "files.watcherExclude": {
+    "**/.testing/**": true
+  },
+  "search.exclude": {
+    "**/.testing": true
+  }
+}
