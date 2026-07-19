@@ -49,8 +49,9 @@ test.describe.serial('Image ingestion pipeline: 00-Inbox/images -> 01-Processing
 
     // No in-scope way to force-trigger the vision agent — that lives in
     // C:\Users\rodrigo\nexus, out of bounds for this suite. Wait out the
-    // real daemon instead: a 60s runtime loop feeding a 900s vision-agent
-    // interval, same as a human dropping a file would experience.
+    // real daemon instead: a 60s runtime loop feeding a 90s vision-agent
+    // interval (test-lane override; stock is 900s — AGENT_INTERVAL_VISION_S
+    // in nexus-install.ts).
     const { notePath, imagePath, data, content } = await test.step(
       'wait for the vision daemon to rename the image and write a draft note',
       () => waitForSlugNote(randomName, inboxBaseline, processingBaseline)

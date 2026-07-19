@@ -56,7 +56,7 @@ Every other exported path/constant across `tests/helpers/*.ts` (vault subfolder 
 
 `scripts/clean.ts` (`npm run clean`) runs the same clear/wipe steps by hand, outside the test lifecycle. All three entry points (`global-setup`, `global-teardown`, `clean.ts`) serialize on a lock file at `.testing/.install.lock` via `withInstallLock` — concurrent callers throw immediately rather than queuing. A stale lock (from a killed process) must be deleted by hand.
 
-Because the pipeline can't be force-triggered (the daemon lives out-of-scope at a separate path — see AGENTS.md hard rules), specs poll real wall-clock intervals (60s runtime loop, 900s vision-agent interval) — this is why the suite is slow and why timeouts matter.
+Because the pipeline can't be force-triggered (the daemon lives out-of-scope at a separate path — see AGENTS.md hard rules), specs poll real wall-clock intervals (60s runtime loop, 90s vision-agent interval — test-lane override, see `AGENT_INTERVAL_VISION_S` in `nexus-install.ts`) — this is why the suite is slow and why timeouts matter.
 
 ### Test layout
 
@@ -88,7 +88,7 @@ Three Playwright projects: `chromium` (everything else), `image-tags` (`tests/im
 
 Every upload funnels through `copyFixtureWithRandomName`, which rejects a second upload of the same fixture per run (ledger `tmp/uploaded-fixtures.jsonl`, cleared by global-setup) unless `{ allowDuplicate: true }` — only `tests/pipeline/image-duplication.spec.ts` passes that, to pin the system's own dedupe (second copy ignored + "Image already uploaded" warning). Dashboard uploads go through the `ImageUpload` class (`tests/helpers/image-upload.ts`: `drop` / `viaButton` / `viaDragAndDrop`). One fixture per spec — see `fixture-image-usage.md` for the current map.
 
-`@slow-agent` tag marks tests gated on long daemon intervals (900s+ vision/scheduled-agent cycles); `npm test` and `test:pipeline:fast` exclude them, `test:pipeline:slow` runs only them. See `parallel-plan.md` for the current analysis of parallelizing the slow tests (bottleneck is the daemon's `pipeline_mode:sync` scheduler, not Playwright worker count).
+`@slow-agent` tag marks tests gated on long daemon intervals (25–26min repair/cleanup cycles, or thumbnail/wikilink stacking their own 300s agent interval on top of vision's 90s pass); `npm test` and `test:pipeline:fast` exclude them, `test:pipeline:slow` runs only them. See `parallel-plan.md` for the current analysis of parallelizing the slow tests (bottleneck is the daemon's `pipeline_mode:sync` scheduler, not Playwright worker count).
 
 ## Hard rules (from AGENTS.md)
 

@@ -203,7 +203,7 @@ describe('installFresh', () => {
 });
 
 describe('overrideAgentSchedules', () => {
-  test('rewrites agent intervals to 300s, repair to 1500s, cleanup to 1560s, leaving runtime alone', () => {
+  test('rewrites agent intervals to vision 90s, repair 1500s, cleanup 1560s, leaving runtime alone', () => {
     writeFakeRegistry();
 
     nexusInstall.overrideAgentSchedules();
@@ -217,7 +217,7 @@ describe('overrideAgentSchedules', () => {
       const m = line.match(/^\s+interval_seconds: (\d+)\s*$/);
       if (m) intervals[agent] = Number(m[1]);
     }
-    assert.deepEqual(intervals, { runtime: 60, repair: 1500, vision: 300, cleanup: 1560 });
+    assert.deepEqual(intervals, { runtime: 60, repair: 1500, vision: 90, cleanup: 1560 });
     // Non-interval *_seconds keys outside agents: must survive untouched.
     assert.match(rewritten, /timeout_seconds: 120/);
   });

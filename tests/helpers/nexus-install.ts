@@ -106,8 +106,12 @@ export function installFresh(): void {
 // agent.json from registry.yaml at install time — editing the registry after
 // install wouldn't take effect. `runtime` is left alone: its 60s value is the
 // dispatch loop itself, not an agent cadence, and slowing it to 300s would
-// add up to 5min of dispatch latency to every agent.
+// add up to 5min of dispatch latency to every agent. `vision` gets its own
+// (fast) override since almost every spec blocks on its draft note first —
+// stacking the generic 300s default on top would tax every test, not just
+// the @slow-agent ones.
 export const AGENT_INTERVAL_OVERRIDES_S: Record<string, number> = {
+  vision: Number(process.env.AGENT_INTERVAL_VISION_S ?? 90),
   repair: Number(process.env.AGENT_INTERVAL_REPAIR_S ?? 25 * 60),
   cleanup: Number(process.env.AGENT_INTERVAL_CLEANUP_S ?? 26 * 60),
 };
@@ -144,8 +148,8 @@ export function overrideAgentSchedules(): void {
   fs.writeFileSync(REGISTRY_PATH, out.join('\n'));
   console.log(
     `[global-setup] registry.yaml: overrode ${changed} interval_seconds ` +
-      `(agents ${DEFAULT_AGENT_INTERVAL_S}s, repair ${AGENT_INTERVAL_OVERRIDES_S.repair}s, ` +
-      `cleanup ${AGENT_INTERVAL_OVERRIDES_S.cleanup}s)`
+      `(agents ${DEFAULT_AGENT_INTERVAL_S}s, vision ${AGENT_INTERVAL_OVERRIDES_S.vision}s, ` +
+      `repair ${AGENT_INTERVAL_OVERRIDES_S.repair}s, cleanup ${AGENT_INTERVAL_OVERRIDES_S.cleanup}s)`
   );
 }
 

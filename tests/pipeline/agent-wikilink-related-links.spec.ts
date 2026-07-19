@@ -22,8 +22,8 @@ import { promoteToLibrary } from '../helpers/nexus-state';
 const EXPECTED_TAGS = ['orc'];
 
 // wikilink-agent's interval is overridden to 300s at install time
-// (overrideAgentSchedules, helpers/nexus-install.ts), but vision (also 300s)
-// must process both drops first and there's no in-scope way to force-trigger
+// (overrideAgentSchedules, helpers/nexus-install.ts), but vision (90s) must
+// process both drops first and there's no in-scope way to force-trigger
 // either. Tagged @slow-agent (see package.json test:pipeline:fast/:slow) with
 // its own 30min budget instead of being skipped.
 test.describe.serial(

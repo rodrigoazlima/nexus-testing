@@ -143,7 +143,9 @@ export interface WaitResult {
 /**
  * Polls the vault for the vision agent's real output. There is no in-scope
  * way to force-trigger the daemon (out of scope: C:\Users\rodrigo\nexus), so
- * this waits out the actual 60s runtime loop / 900s vision interval. Success
+ * this waits out the actual 60s runtime loop / 90s vision interval (test-lane
+ * override, stock is 900s — see AGENT_INTERVAL_VISION_S in nexus-install.ts).
+ * Success
  * = the original random-named image is gone from the inbox (renamed in
  * place) AND a new 01-Processing/*.md draft's `source:` frontmatter points at
  * the renamed sibling.
