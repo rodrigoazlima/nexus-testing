@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { ROOT_DIR, VAULT_PATH } from './config';
 
@@ -77,30 +78,87 @@ export function clearInstall(): void {
 
 // A prior interrupted run can leave something holding an open handle inside
 // NEXUS_PATH even with no service installed — observed 2026-07-19: an empty
-// leftover dir, rmSync failing EPERM/"used by another process", root cause
-// wslhost.exe (WSL had touched the path via /mnt/c). maxRetries/retryDelay
-// covers transient locks (AV scan etc); a lock that outlives that is
-// probably a live process (WSL, an orphaned shell cwd'd into the dir, a
-// leftover playwright test-server) — surface how to find/clear it instead
-// of a bare EPERM stack trace. Not auto-running `wsl --shutdown` here: it
-// kills every WSL distro on the box, too destructive to do silently as a
-// side effect of a test run.
+// leftover dir, rmSync failing EPERM/"used by another process". Escalates
+// through three stages, each only tried once the previous one has actually
+// failed (never skips straight to the destructive end):
+//   1. rmSync's own maxRetries/retryDelay — covers transient locks (AV scan).
+//   2. 'wsl --shutdown' + retry — WSL's DrvFs cache keeps a handle into
+//      /mnt/c paths after something in WSL touched them (root cause the one
+//      time this was diagnosed live, via wslhost.exe).
+//   3. find-and-kill the exact locking process via Sysinternals handle64.exe
+//      (downloaded on demand, cached in os.tmpdir), then a final retry.
+// Every stage logs before it acts — killing processes is a real side effect,
+// this must never be a silent surprise.
 function removeDirWithRetry(dir: string): void {
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    return;
   } catch (err) {
-    if (!(err instanceof Error) || (err as NodeJS.ErrnoException).code !== 'EPERM') throw err;
+    if (!isLockError(err)) throw err;
+  }
+
+  console.log(`${dir} still locked after retrying — running 'wsl --shutdown' to release any WSL-held handle`);
+  try {
+    execFileSync('wsl', ['--shutdown'], { stdio: 'ignore' });
+  } catch {
+    // wsl not installed, or nothing to shut down — fall through to the retry either way
+  }
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
+    return;
+  } catch (err) {
+    if (!isLockError(err)) throw err;
+  }
+
+  const holders = findLockingPids(dir);
+  if (holders.length > 0) {
+    console.log(`${dir} still locked — killing locking process(es): ${holders.map((h) => `${h.name} (pid ${h.pid})`).join(', ')}`);
+    for (const { pid } of holders) {
+      try {
+        execFileSync('taskkill', ['/F', '/PID', String(pid)], { stdio: 'ignore' });
+      } catch {
+        // already exited, or protected — best effort, move on
+      }
+    }
+  }
+
+  try {
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
+  } catch (err) {
+    if (!isLockError(err)) throw err;
     throw new Error(
-      `${dir} is locked by another process and could not be removed (likely leftover from ` +
-        `a prior interrupted run). Try:\n` +
-        `  - 'wsl --shutdown' if WSL is installed (wslhost.exe holding a handle into the path ` +
-        `has been the cause before)\n` +
-        `  - closing any terminal/Explorer window whose cwd is inside ${dir}\n` +
-        `  - killing an orphaned 'playwright test-server' process (VS Code Playwright extension)\n` +
-        `  - Sysinternals handle.exe to find the exact owner: ` +
-        `handle64.exe -accepteula -nobanner "${dir}"\n` +
-        `Original error: ${err}`
+      `${dir} is still locked after 'wsl --shutdown' and killing ` +
+        `${holders.length > 0 ? holders.map((h) => `${h.name} (pid ${h.pid})`).join(', ') : '(no locking process found — handle64.exe unavailable or found nothing)'}. ` +
+        `Close any terminal/Explorer window whose cwd is inside ${dir} and retry. Original error: ${err}`
     );
+  }
+}
+
+function isLockError(err: unknown): boolean {
+  const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
+  return code === 'EPERM' || code === 'EBUSY';
+}
+
+const HANDLE_EXE_PATH = path.join(os.tmpdir(), 'nexus-testing-handle64.exe');
+const HANDLE_LINE = /^(\S+)\s+pid:\s*(\d+)\s+type:\s*File/;
+
+/** Best-effort: returns [] if handle64.exe can't be fetched or run, rather than failing the caller. */
+function findLockingPids(dir: string): Array<{ name: string; pid: number }> {
+  try {
+    if (!fs.existsSync(HANDLE_EXE_PATH)) {
+      execFileSync('pwsh', [
+        '-Command',
+        `Invoke-WebRequest -Uri 'https://live.sysinternals.com/handle64.exe' -OutFile '${HANDLE_EXE_PATH}' -UseBasicParsing`,
+      ]);
+    }
+    const output = execFileSync(HANDLE_EXE_PATH, ['-accepteula', '-nobanner', dir], { encoding: 'utf-8' });
+    return output
+      .split('\n')
+      .map((line) => line.match(HANDLE_LINE))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map((m) => ({ name: m[1], pid: Number(m[2]) }));
+  } catch {
+    return [];
   }
 }
 
