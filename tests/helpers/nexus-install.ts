@@ -89,7 +89,68 @@ export function clearInstall(): void {
 //      (downloaded on demand, cached in os.tmpdir), then a final retry.
 // Every stage logs before it acts — killing processes is a real side effect,
 // this must never be a silent surprise.
+/** Best-effort: true only if the shutdown command actually ran (wsl installed and reachable). */
+function shutdownWsl(): boolean {
+  try {
+    execFileSync('wsl', ['--shutdown'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Restarting is best-effort and doesn't need to fail the caller — `wsl --shutdown`
+// stops the whole WSL VM, not just the distro touching NEXUS_PATH, so leaving it
+// down would silently break any other WSL-dependent workflow the user has running.
+function startWsl(): void {
+  try {
+    execFileSync('wsl', ['-e', 'true'], { stdio: 'ignore' });
+  } catch {
+    // no default distro, or already running — not our problem to fix
+  }
+}
+
+// podman machine on Windows runs its VM inside WSL2 — `wsl --shutdown` takes it
+// down too, which silently breaks the vision-agent's sandboxed dispatch (see
+// project_qwen3_vl_preflight memory: podman/docker must be up for it to run).
+// Both steps are best-effort: absent if podman/Podman Desktop isn't installed.
+function restartPodman(): void {
+  try {
+    execFileSync('podman', ['machine', 'start'], { stdio: 'ignore' });
+  } catch {
+    // podman not installed, no machine configured, or already running
+  }
+
+  const desktopExe = path.join(
+    process.env.LOCALAPPDATA ?? '',
+    'Programs',
+    'podman-desktop',
+    'Podman Desktop.exe'
+  );
+  if (fs.existsSync(desktopExe)) {
+    try {
+      execFileSync('pwsh', ['-NoProfile', '-Command', `Start-Process -FilePath '${desktopExe}'`], { stdio: 'ignore' });
+    } catch {
+      // best effort
+    }
+  }
+}
+
 function removeDirWithRetry(dir: string): void {
+  let didShutdownWsl = false;
+  try {
+    removeDirWithRetryInner(dir, () => {
+      didShutdownWsl = true;
+    });
+  } finally {
+    if (didShutdownWsl) {
+      startWsl();
+      restartPodman();
+    }
+  }
+}
+
+function removeDirWithRetryInner(dir: string, onWslShutdown: () => void): void {
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
     return;
@@ -98,11 +159,7 @@ function removeDirWithRetry(dir: string): void {
   }
 
   console.log(`${dir} still locked after retrying — running 'wsl --shutdown' to release any WSL-held handle`);
-  try {
-    execFileSync('wsl', ['--shutdown'], { stdio: 'ignore' });
-  } catch {
-    // wsl not installed, or nothing to shut down — fall through to the retry either way
-  }
+  if (shutdownWsl()) onWslShutdown();
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
     return;
@@ -122,12 +179,18 @@ function removeDirWithRetry(dir: string): void {
     }
   }
 
+  // Killing the Windows-side holders can still leave WSL's DrvFs cache
+  // holding its own handle into the same /mnt/c path (it re-caches on any
+  // WSL-side touch, including ones triggered by the processes just killed) —
+  // shut it down a second time before the final retry.
+  if (shutdownWsl()) onWslShutdown();
+
   try {
     fs.rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
   } catch (err) {
     if (!isLockError(err)) throw err;
     throw new Error(
-      `${dir} is still locked after 'wsl --shutdown' and killing ` +
+      `${dir} is still locked after 'wsl --shutdown' (x2) and killing ` +
         `${holders.length > 0 ? holders.map((h) => `${h.name} (pid ${h.pid})`).join(', ') : '(no locking process found — handle64.exe unavailable or found nothing)'}. ` +
         `Close any terminal/Explorer window whose cwd is inside ${dir} and retry. Original error: ${err}`
     );
