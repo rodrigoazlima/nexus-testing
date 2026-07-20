@@ -70,25 +70,52 @@ function assertElevated(): void {
 // station, it falls back to `Read-Host -AsSecureString`. That prompt reads
 // from the same stdin pipe this script already uses to answer -CleanInstall's
 // "Type 'yes' to confirm" — by the time it fires, that pipe is at EOF, so it
-// silently resolves to an empty password. NSSM then installs the service
-// with an empty credential, which fails at start with a Windows logon
-// failure (seen live 2026-07-20: service left "Stopped", validation FAILED,
-// no indication in the error that a password was the cause). Failing fast
-// here beats debugging a cryptic pwsh exit code later.
-function assertServicePasswordAvailable(): void {
+// silently resolves to an empty password (any non-null SecureString is
+// truthy in PowerShell, even an empty one, so this never reaches the
+// script's own "no password -> run as LocalSystem" fallback branch). NSSM
+// then installs the service with an empty credential, which fails at start
+// with a Windows logon failure (seen live 2026-07-20: service left
+// "Stopped", validation FAILED, no indication in the error that a password
+// was the cause). Warn loudly here rather than silently hitting that later.
+function warnIfServicePasswordMissing(): void {
   if (!process.env.NEXUS_SERVICE_PASSWORD) {
     const account = process.env.NEXUS_SERVICE_USERNAME || `${process.env.COMPUTERNAME}\\${process.env.USERNAME}`;
-    throw new Error(
-      `NEXUS_SERVICE_PASSWORD is not set. ${SETUP_SCRIPT} needs it to install the agent service ` +
-        `under ${account} (required for sandboxed vision-agent dispatch to reach Podman/Docker) ` +
-        `without falling back to an interactive password prompt that this script's piped stdin can't ` +
-        `answer. Set NEXUS_SERVICE_PASSWORD=<${account}'s Windows account password> in .env.`
+    console.warn(
+      `[nexus-install] WARNING: NEXUS_SERVICE_PASSWORD is not set. ${SETUP_SCRIPT} will very likely install ` +
+        `the agent service under ${account} with an empty password and fail to start (Windows logon failure) ` +
+        `— its own interactive password prompt reads from this script's piped stdin, which is already ` +
+        `consumed by -CleanInstall's confirmation. Set NEXUS_SERVICE_PASSWORD=<${account}'s Windows account ` +
+        `password> in .env to avoid this.`
     );
   }
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// setup-service.ps1 hands NSSM the literal string "python" (its -Python
+// default) as the service's executable, unresolved. NSSM stores that literal
+// and Windows resolves it at *service* launch time, under the service-logon
+// session for whichever account the service runs as — which does not
+// inherit the interactive user's PATH (a per-user Python install commonly
+// only reaches PATH via HKCU, loaded at interactive logon, not service
+// logon). Result: "Failed to start service ... CreateProcess() failed: The
+// system cannot find the file specified" even though `python --version`
+// works fine in the very shell running this script (seen live 2026-07-20).
+// Resolving the absolute path here, while still in that working interactive
+// shell, and passing it via -Python sidesteps the bug without touching the
+// Nexus codebase itself.
+function resolvePythonExecutable(): string | undefined {
+  try {
+    const output = execFileSync('where', ['python'], {}).toString();
+    return output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean);
+  } catch {
+    return undefined; // let setup-service.ps1's own "python" default + its own error surface instead
+  }
 }
 
 // vision-agent dispatch is sandboxed (agents.vision.sandbox.enabled in the
@@ -163,7 +190,7 @@ export function installFresh(): void {
 
   console.log(`running clean install (vault: ${VAULT_PATH})`);
   assertElevated();
-  assertServicePasswordAvailable();
+  warnIfServicePasswordMissing();
   // -CleanInstall gates on an interactive `Read-Host "Type 'yes' to confirm"`
   // with no bypass flag — feed it via stdin so this works non-interactively.
   // -VaultRoot must be explicit: without it setup-service.ps1 defaults to
@@ -177,6 +204,10 @@ export function installFresh(): void {
   // else. NEXUS_SERVICE_PASSWORD must still be that account's password.
   if (process.env.NEXUS_SERVICE_USERNAME) {
     args.push('-ServiceAccount', process.env.NEXUS_SERVICE_USERNAME);
+  }
+  const pythonPath = resolvePythonExecutable();
+  if (pythonPath) {
+    args.push('-Python', pythonPath);
   }
   run('pwsh', args, 'yes\n');
 }

@@ -28,8 +28,9 @@ const VAULT_PATH_ENV = path.join(os.tmpdir(), `nexus-install-test-vault-${proces
 process.env.NEXUS_PATH = NEXUS_PATH_ENV;
 process.env.VAULT_PATH = VAULT_PATH_ENV;
 
-// installFresh() requires this to be set (see assertServicePasswordAvailable)
-// — isolate tests from whatever the repo's own .env does or doesn't set.
+// installFresh() warns (does not throw) when this is unset (see
+// warnIfServicePasswordMissing) — isolate tests from whatever the repo's own
+// .env does or doesn't set.
 const ORIGINAL_SERVICE_PASSWORD = process.env.NEXUS_SERVICE_PASSWORD;
 const ORIGINAL_SERVICE_USERNAME = process.env.NEXUS_SERVICE_USERNAME;
 
@@ -70,8 +71,11 @@ after(() => {
 
 // Records every execFileSync call instead of actually running anything.
 // `onCall` can throw per-call to simulate a failing command (e.g. `net
-// session` when not elevated).
-function mockExec(calls: ExecCall[], onCall?: (call: ExecCall) => void): void {
+// session` when not elevated), or return a string/Buffer to stand in for the
+// real command's stdout (e.g. `where python`'s resolved path) — anything
+// falsy falls back to an empty Buffer, matching a command that printed
+// nothing.
+function mockExec(calls: ExecCall[], onCall?: (call: ExecCall) => void | string | Buffer): void {
   childProcessCjs.execFileSync = ((
     cmd: string,
     args: string[],
@@ -79,8 +83,8 @@ function mockExec(calls: ExecCall[], onCall?: (call: ExecCall) => void): void {
   ) => {
     const call = { cmd, args, options };
     calls.push(call);
-    onCall?.(call);
-    return Buffer.from('');
+    const result = onCall?.(call);
+    return result ?? Buffer.from('');
   }) as unknown as typeof originalExecFileSync;
 }
 
@@ -220,16 +224,16 @@ describe('assertSandboxRuntimeAvailable', () => {
 });
 
 describe('installFresh', () => {
-  test('clones, trusts the dir, elevation-checks, password-checks, then runs -CleanInstall with -VaultRoot over stdin (no -ServiceAccount when NEXUS_SERVICE_USERNAME is unset)', () => {
+  test('clones, trusts the dir, elevation-checks, password-checks, resolves python, then runs -CleanInstall with -VaultRoot over stdin (no -ServiceAccount/-Python when unresolved)', () => {
     writeFakeRegistry(); // clone is mocked, so seed what it would have produced
     process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
     delete process.env.NEXUS_SERVICE_USERNAME; // explicit, not just relying on afterEach from a prior test
     const calls: ExecCall[] = [];
-    mockExec(calls);
+    mockExec(calls); // `where python` returns nothing (default empty buffer) -> no -Python arg
 
     nexusInstall.installFresh();
 
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
     assert.deepEqual(calls[0], {
       cmd: 'git',
       args: [
@@ -253,7 +257,8 @@ describe('installFresh', () => {
       options: { stdio: 'inherit' },
     });
     assert.deepEqual(calls[2], { cmd: 'net', args: ['session'], options: { stdio: 'ignore' } });
-    assert.deepEqual(calls[3], {
+    assert.deepEqual(calls[3], { cmd: 'where', args: ['python'], options: {} });
+    assert.deepEqual(calls[4], {
       cmd: 'pwsh',
       args: ['-File', nexusInstall.SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH_ENV],
       options: { stdio: ['pipe', 'inherit', 'inherit'], input: 'yes\n' },
@@ -269,7 +274,7 @@ describe('installFresh', () => {
 
     nexusInstall.installFresh();
 
-    assert.deepEqual(calls[3], {
+    assert.deepEqual(calls[4], {
       cmd: 'pwsh',
       args: [
         '-File',
@@ -280,6 +285,56 @@ describe('installFresh', () => {
         '-ServiceAccount',
         'OTHERDOMAIN\\otheruser',
       ],
+      options: { stdio: ['pipe', 'inherit', 'inherit'], input: 'yes\n' },
+    });
+  });
+
+  // Regression test for a live 2026-07-20 failure: setup-service.ps1 hands
+  // NSSM the bare literal "python", which Windows resolves at *service*
+  // launch time under the service-logon session — a session that doesn't
+  // inherit the interactive shell's PATH. `where python` here (still in the
+  // working interactive shell) resolves the absolute path up front so NSSM
+  // never has to do that PATH lookup itself.
+  test('resolves and passes -Python <absolute path> when `where python` succeeds', () => {
+    writeFakeRegistry();
+    process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
+    delete process.env.NEXUS_SERVICE_USERNAME;
+    const calls: ExecCall[] = [];
+    mockExec(calls, (call) => {
+      if (call.cmd === 'where') return 'C:\\Python311\\python.exe\r\n';
+    });
+
+    nexusInstall.installFresh();
+
+    assert.deepEqual(calls[4], {
+      cmd: 'pwsh',
+      args: [
+        '-File',
+        nexusInstall.SETUP_SCRIPT,
+        '-CleanInstall',
+        '-VaultRoot',
+        VAULT_PATH_ENV,
+        '-Python',
+        'C:\\Python311\\python.exe',
+      ],
+      options: { stdio: ['pipe', 'inherit', 'inherit'], input: 'yes\n' },
+    });
+  });
+
+  test('omits -Python when `where python` fails (not installed / not on PATH)', () => {
+    writeFakeRegistry();
+    process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
+    delete process.env.NEXUS_SERVICE_USERNAME;
+    const calls: ExecCall[] = [];
+    mockExec(calls, (call) => {
+      if (call.cmd === 'where') throw new Error('INFO: Could not find files for the given pattern(s).');
+    });
+
+    assert.doesNotThrow(() => nexusInstall.installFresh());
+
+    assert.deepEqual(calls[4], {
+      cmd: 'pwsh',
+      args: ['-File', nexusInstall.SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH_ENV],
       options: { stdio: ['pipe', 'inherit', 'inherit'], input: 'yes\n' },
     });
   });
@@ -299,23 +354,46 @@ describe('installFresh', () => {
     );
   });
 
-  // Regression test for a live 2026-07-20 failure: without this check,
-  // installFresh fell through to setup-service.ps1's own interactive
-  // Read-Host password prompt, which reads from the same piped stdin already
-  // consumed by -CleanInstall's 'yes\n' confirmation. The prompt silently got
-  // EOF, NSSM installed the service with an empty password, and it failed to
-  // start with a Windows logon failure instead of a clear error here.
-  test('clones, trusts the dir, and elevation-checks before failing fast when NEXUS_SERVICE_PASSWORD is unset, never reaching -CleanInstall', () => {
+  // Regression test for a live 2026-07-20 failure: setup-service.ps1's own
+  // "no password -> run as LocalSystem" fallback is unreachable in our
+  // invocation shape (confirmed live: its Read-Host prompt DID fire, proving
+  // [Environment]::UserInteractive is true even with our piped stdin) — any
+  // non-null SecureString it gets back, including an empty one from the
+  // already-closed pipe, is truthy, so it always takes the "set ObjectName
+  // with this password" branch instead. So this warns (not throws) and lets
+  // the install proceed, on the understanding that it will very likely still
+  // hit that same logon failure rather than a clean LocalSystem install.
+  test('warns naming the invoking user (COMPUTERNAME\\USERNAME) but still completes the install when NEXUS_SERVICE_PASSWORD and NEXUS_SERVICE_USERNAME are both unset', () => {
     writeFakeRegistry();
     delete process.env.NEXUS_SERVICE_PASSWORD;
+    delete process.env.NEXUS_SERVICE_USERNAME;
     const calls: ExecCall[] = [];
     mockExec(calls);
+    const warnings: string[] = [];
+    console.warn = (msg?: unknown) => void warnings.push(String(msg));
 
-    assert.throws(() => nexusInstall.installFresh(), /NEXUS_SERVICE_PASSWORD/);
-    assert.deepEqual(
-      calls.map((c) => c.cmd),
-      ['git', 'git', 'net']
-    );
+    assert.doesNotThrow(() => nexusInstall.installFresh());
+
+    assert.equal(calls.length, 5);
+    assert.equal(calls[4].cmd, 'pwsh');
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /NEXUS_SERVICE_PASSWORD is not set/);
+    assert.match(warnings[0], new RegExp(`${process.env.COMPUTERNAME}\\\\${process.env.USERNAME}`));
+  });
+
+  test('warns naming the NEXUS_SERVICE_USERNAME override (not the invoking user) when password is unset but a username override is set', () => {
+    writeFakeRegistry();
+    delete process.env.NEXUS_SERVICE_PASSWORD;
+    process.env.NEXUS_SERVICE_USERNAME = 'OTHERDOMAIN\\otheruser';
+    const calls: ExecCall[] = [];
+    mockExec(calls);
+    const warnings: string[] = [];
+    console.warn = (msg?: unknown) => void warnings.push(String(msg));
+
+    assert.doesNotThrow(() => nexusInstall.installFresh());
+
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /OTHERDOMAIN\\otheruser/);
   });
 });
 
