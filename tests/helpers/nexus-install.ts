@@ -77,9 +77,21 @@ function assertElevated(): void {
 // with a Windows logon failure (seen live 2026-07-20: service left
 // "Stopped", validation FAILED, no indication in the error that a password
 // was the cause). Warn loudly here rather than silently hitting that later.
+// NSSM's `set ObjectName` (a thin wrapper over Win32 ChangeServiceConfig)
+// rejects a bare account name like "rodrigo" with "The account name is
+// invalid or does not exist, or the password is invalid" even when the
+// password itself is correct — it needs a qualified form (".\rodrigo" for a
+// local account, or "DOMAIN\rodrigo"). NEXUS_SERVICE_USERNAME is commonly set
+// bare in .env, so qualify it here once rather than at each of the three
+// call sites that need the account name.
+function resolveServiceAccount(): string {
+  const raw = process.env.NEXUS_SERVICE_USERNAME || `${process.env.COMPUTERNAME}\\${process.env.USERNAME}`;
+  return raw.includes('\\') ? raw : `.\\${raw}`;
+}
+
 function warnIfServicePasswordMissing(): void {
   if (!process.env.NEXUS_SERVICE_PASSWORD) {
-    const account = process.env.NEXUS_SERVICE_USERNAME || `${process.env.COMPUTERNAME}\\${process.env.USERNAME}`;
+    const account = resolveServiceAccount();
     console.warn(
       `[nexus-install] WARNING: NEXUS_SERVICE_PASSWORD is not set. ${SETUP_SCRIPT} will very likely install ` +
         `the agent service under ${account} with an empty password and fail to start (Windows logon failure) ` +
@@ -92,6 +104,98 @@ function warnIfServicePasswordMissing(): void {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// setup-service.ps1's -ServicePassword branch calls `nssm set <svc> ObjectName
+// <account> <password>` to switch the service off LocalSystem. On this
+// machine that call fails even with a confirmed-correct password:
+//   ChangeServiceConfig(): The account name is invalid or does not exist,
+//   or the password is invalid for the account name specified.
+// The script logs "Running '<svc>' as <account> (not LocalSystem)..." right
+// before that call and never checks its exit code, so the failure is
+// invisible in its own output — the service silently stays on LocalSystem
+// (confirmed live 2026-07-20: `sc qc` showed SERVICE_START_NAME LocalSystem
+// despite a correct NEXUS_SERVICE_PASSWORD and a "Running as rodrigo" log
+// line). Windows returns this exact error, ERROR_INVALID_SERVICE_ACCOUNT
+// (1057), both for a bad password AND for an account missing the "Log on as
+// a service" right — an ordinary user account has neither by default.
+// LocalSystem has no user profile at all, which fully explains both
+// remaining failures seen live under the service: vision-agent's podman
+// sandbox ("Cannot connect to Podman" — no per-user machine config visible)
+// and every non-vision agent's git commit ("[WinError 2] The system cannot
+// find the file specified" — git.exe only resolves via User PATH here, same
+// story as resolvePythonExecutable's Machine-vs-User-PATH gap below, but for
+// git). Once the service genuinely runs as a real logged-on account instead
+// of LocalSystem, both should resolve together — no separate PATH/env patch
+// needed for either.
+// Grants the right via secedit, idempotently: appends the account's SID to
+// SeServiceLogonRight's existing principal list rather than replacing it, so
+// other accounts already granted the right (built-in service SIDs etc.) are
+// left alone.
+function ensureServiceLogonRight(account: string): void {
+  const script = `
+$ErrorActionPreference = 'Stop'
+$sid = (New-Object System.Security.Principal.NTAccount('${account}')).Translate([System.Security.Principal.SecurityIdentifier]).Value
+$dir = Join-Path $env:TEMP "nexus-secpol-$PID"
+New-Item -ItemType Directory -Force -Path $dir | Out-Null
+$cfg = Join-Path $dir 'secpol.inf'
+$db = Join-Path $dir 'secpol.sdb'
+try {
+  secedit /export /cfg $cfg /areas USER_RIGHTS | Out-Null
+  $lines = Get-Content $cfg
+  $existing = $lines | Where-Object { $_ -match '^SeServiceLogonRight\\s*=' }
+  if ($existing -and $existing -match [regex]::Escape("*$sid")) {
+    Write-Output 'ALREADY_GRANTED'
+  } else {
+    if ($existing) {
+      $updated = "$existing,*$sid"
+      $lines = $lines | ForEach-Object { if ($_ -eq $existing) { $updated } else { $_ } }
+    } else {
+      $lines += "SeServiceLogonRight = *$sid"
+    }
+    Set-Content -Path $cfg -Value $lines -Encoding Unicode
+    secedit /configure /db $db /cfg $cfg /areas USER_RIGHTS | Out-Null
+    Write-Output 'GRANTED'
+  }
+} finally {
+  Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+}
+`;
+  try {
+    const output = execFileSync('pwsh', ['-NoProfile', '-Command', script]).toString().trim();
+    console.log(`[nexus-install] service logon right for ${account}: ${output || 'done'}`);
+  } catch (err) {
+    console.warn(
+      `[nexus-install] WARNING: could not grant '${account}' the "Log on as a service" right ` +
+        `(${(err as Error).message}). If the service still shows SERVICE_START_NAME LocalSystem after ` +
+        `install (\`sc qc <service>\`), this is why — grant it manually via secpol.msc > Local Policies > ` +
+        `User Rights Assignment > "Log on as a service", or run this script elevated.`
+    );
+  }
+}
+
+// setup-service.ps1's own "Running as <account> (not LocalSystem)..." log
+// line is optimistic (see ensureServiceLogonRight's comment) — it fires
+// before confirming the nssm ObjectName-set call actually succeeded. Only
+// nssm-install.log has the truth. Checked after install so a silent
+// LocalSystem fallback is visible here instead of only surfacing later as an
+// unexplained podman/git failure deep in automation.log.
+function warnIfObjectNameFellBackToLocalSystem(): void {
+  const nssmLog = path.join(NEXUS_PATH, 'agents', 'runtime', 'state', 'logs', 'nssm-install.log');
+  try {
+    const content = fs.readFileSync(nssmLog, 'utf-8');
+    if (/Error setting parameter "ObjectName"/.test(content)) {
+      console.warn(
+        `[nexus-install] WARNING: the agent service failed to switch off LocalSystem (see ${nssmLog}) ` +
+          `despite setup-service.ps1's log claiming otherwise. It will run as LocalSystem — no user profile, ` +
+          `so vision-agent's podman sandbox and the daemon's git commits will both fail all run. ` +
+          `ensureServiceLogonRight() ran but the account/password still didn't take — verify NEXUS_SERVICE_PASSWORD ` +
+          `and NEXUS_SERVICE_USERNAME (if set) are correct for this machine.`
+      );
+    }
+  } catch {
+    // log not written yet, or its path differs across Nexus versions — nothing to check
+  }
 }
 
 // setup-service.ps1 hands NSSM the literal string "python" (its -Python
@@ -191,6 +295,14 @@ export function installFresh(): void {
   console.log(`running clean install (vault: ${VAULT_PATH})`);
   assertElevated();
   warnIfServicePasswordMissing();
+  // Only worth attempting if setup-service.ps1 will actually try the
+  // ObjectName switch (it only does so when a password is available) — see
+  // ensureServiceLogonRight's comment for why this is needed even with a
+  // correct password.
+  const serviceAccount = resolveServiceAccount();
+  if (process.env.NEXUS_SERVICE_PASSWORD) {
+    ensureServiceLogonRight(serviceAccount);
+  }
   // -CleanInstall gates on an interactive `Read-Host "Type 'yes' to confirm"`
   // with no bypass flag — feed it via stdin so this works non-interactively.
   // -VaultRoot must be explicit: without it setup-service.ps1 defaults to
@@ -203,13 +315,14 @@ export function installFresh(): void {
   // user — only pass it when the caller wants the service to run as someone
   // else. NEXUS_SERVICE_PASSWORD must still be that account's password.
   if (process.env.NEXUS_SERVICE_USERNAME) {
-    args.push('-ServiceAccount', process.env.NEXUS_SERVICE_USERNAME);
+    args.push('-ServiceAccount', serviceAccount);
   }
   const pythonPath = resolvePythonExecutable();
   if (pythonPath) {
     args.push('-Python', pythonPath);
   }
   run('pwsh', args, 'yes\n');
+  warnIfObjectNameFellBackToLocalSystem();
 }
 
 // Test-lane schedule: the stock registry ships 900s–86400s agent intervals,
