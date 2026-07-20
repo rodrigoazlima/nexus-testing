@@ -265,6 +265,44 @@ export async function assertSandboxRuntimeAvailable(
   );
 }
 
+// vision-agent and lore-agent both call a local Qwen3-VL server (LM Studio)
+// at VISION_MODEL_URL, a second dependency layered behind the container-
+// runtime check above. If it's down, the daemon logs a WARN and silently
+// retries next interval — the queue stays populated but nothing processes,
+// indistinguishable from a dead pipeline from the test side until every
+// vision-dependent spec burns its own 10min POLL_TIMEOUT_MS one at a time.
+// Root cause of the 2026-07-13 and 2026-07-20 cascades (see
+// project_qwen3_vl_preflight memory) — this catches it in seconds instead.
+export const VISION_MODEL_URL = process.env.VISION_MODEL_URL ?? 'http://localhost:1234/v1/models';
+
+export async function assertVisionModelAvailable(
+  opts: { attempts?: number; delayMs?: number } = {}
+): Promise<void> {
+  const attempts = opts.attempts ?? 3;
+  const delayMs = opts.delayMs ?? 1000;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(VISION_MODEL_URL, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        console.log(
+          `[global-setup] vision model OK: \`${VISION_MODEL_URL}\` returned ${res.status}` +
+            (attempt > 1 ? ` (attempt ${attempt}/${attempts})` : '')
+        );
+        return;
+      }
+    } catch {
+      // try next attempt
+    }
+    if (attempt < attempts) await sleep(delayMs);
+  }
+  throw new Error(
+    `Vision model server unreachable after ${attempts} attempts (checked: \`${VISION_MODEL_URL}\`). ` +
+      'vision-agent and lore-agent silently skip their batch every cycle without it, looking ' +
+      'identical to a dead pipeline until every downstream spec times out on its own. Start LM ' +
+      'Studio (or whatever serves Qwen3-VL) on that endpoint before running tests.'
+  );
+}
+
 /** Uninstalls the service (if present) and wipes the codebase dir. */
 export function clearInstall(): void {
   if (fs.existsSync(SETUP_SCRIPT)) {

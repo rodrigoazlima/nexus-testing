@@ -223,6 +223,64 @@ describe('assertSandboxRuntimeAvailable', () => {
   });
 });
 
+describe('assertVisionModelAvailable', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test('succeeds on a single 200 response, no retry', async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200 } as Response;
+    }) as typeof fetch;
+
+    await assert.doesNotReject(() => nexusInstall.assertVisionModelAvailable({ delayMs: 5 }));
+    assert.deepEqual(urls, [nexusInstall.VISION_MODEL_URL]);
+  });
+
+  // The scenario reported live: LM Studio offline for a stretch, silently
+  // skipping every vision-agent cycle — indistinguishable from a dead
+  // pipeline from the test side until every downstream spec times out on
+  // its own 10min budget (see project_qwen3_vl_preflight memory).
+  test('throws a clear error naming the endpoint when unreachable every attempt', async () => {
+    let callCount = 0;
+    globalThis.fetch = (async () => {
+      callCount++;
+      throw new Error('fetch failed: ECONNREFUSED');
+    }) as typeof fetch;
+
+    await assert.rejects(
+      () => nexusInstall.assertVisionModelAvailable({ attempts: 2, delayMs: 5 }),
+      /Vision model server unreachable after 2 attempts/
+    );
+    assert.equal(callCount, 2);
+  });
+
+  test('recovers from a flapping server — fails once, then succeeds on a later attempt', async () => {
+    let callCount = 0;
+    globalThis.fetch = (async () => {
+      callCount++;
+      if (callCount < 3) throw new Error('fetch failed: ECONNREFUSED');
+      return { ok: true, status: 200 } as Response;
+    }) as typeof fetch;
+
+    await assert.doesNotReject(() => nexusInstall.assertVisionModelAvailable({ attempts: 5, delayMs: 5 }));
+    assert.equal(callCount, 3);
+  });
+
+  test('treats a non-2xx response as unreachable, not a fetch throw', async () => {
+    globalThis.fetch = (async () => ({ ok: false, status: 503 }) as Response) as typeof fetch;
+
+    await assert.rejects(
+      () => nexusInstall.assertVisionModelAvailable({ attempts: 1, delayMs: 5 }),
+      /Vision model server unreachable after 1 attempts/
+    );
+  });
+});
+
 describe('installFresh', () => {
   test('clones, trusts the dir, elevation-checks, password-checks, resolves python, then runs -CleanInstall with -VaultRoot over stdin (no -ServiceAccount/-Python when unresolved)', () => {
     writeFakeRegistry(); // clone is mocked, so seed what it would have produced

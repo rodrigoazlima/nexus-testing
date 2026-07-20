@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import {
   NEXUS_PATH,
   assertSandboxRuntimeAvailable,
+  assertVisionModelAvailable,
   clearInstall,
   installFresh,
   warnIfEnvLocalMissing,
@@ -16,9 +17,10 @@ import { marker, startSampler } from './helpers/profile';
 export default async function globalSetup(): Promise<void> {
   console.log(`[global-setup] target install: ${NEXUS_PATH}`);
   // Fail fast, before burning any time on clone/install: a dead sandbox
-  // runtime otherwise surfaces 10min later as every vision-dependent spec
-  // timing out, one at a time.
+  // runtime or a dead Qwen3-VL server otherwise surfaces 10min later as
+  // every vision-dependent spec timing out, one at a time.
   await assertSandboxRuntimeAvailable();
+  await assertVisionModelAvailable();
   if (process.env.NEXUS_TEST_KEEP) {
     console.log('[global-setup] --keep set, global-teardown will leave NEXUS_PATH and VAULT_PATH in place');
   }
