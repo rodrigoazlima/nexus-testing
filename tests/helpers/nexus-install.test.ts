@@ -28,6 +28,11 @@ const VAULT_PATH_ENV = path.join(os.tmpdir(), `nexus-install-test-vault-${proces
 process.env.NEXUS_PATH = NEXUS_PATH_ENV;
 process.env.VAULT_PATH = VAULT_PATH_ENV;
 
+// installFresh() requires this to be set (see assertServicePasswordAvailable)
+// — isolate tests from whatever the repo's own .env does or doesn't set.
+const ORIGINAL_SERVICE_PASSWORD = process.env.NEXUS_SERVICE_PASSWORD;
+const ORIGINAL_SERVICE_USERNAME = process.env.NEXUS_SERVICE_USERNAME;
+
 interface ExecCall {
   cmd: string;
   args: string[];
@@ -44,6 +49,16 @@ afterEach(() => {
   childProcessCjs.execFileSync = originalExecFileSync;
   console.log = originalConsoleLog;
   console.warn = originalConsoleWarn;
+  if (ORIGINAL_SERVICE_PASSWORD === undefined) {
+    delete process.env.NEXUS_SERVICE_PASSWORD;
+  } else {
+    process.env.NEXUS_SERVICE_PASSWORD = ORIGINAL_SERVICE_PASSWORD;
+  }
+  if (ORIGINAL_SERVICE_USERNAME === undefined) {
+    delete process.env.NEXUS_SERVICE_USERNAME;
+  } else {
+    process.env.NEXUS_SERVICE_USERNAME = ORIGINAL_SERVICE_USERNAME;
+  }
   if (fs.existsSync(nexusInstall.NEXUS_PATH)) {
     fs.rmSync(nexusInstall.NEXUS_PATH, { recursive: true, force: true });
   }
@@ -205,8 +220,10 @@ describe('assertSandboxRuntimeAvailable', () => {
 });
 
 describe('installFresh', () => {
-  test('clones, trusts the dir, elevation-checks, then runs -CleanInstall with -VaultRoot over stdin', () => {
+  test('clones, trusts the dir, elevation-checks, password-checks, then runs -CleanInstall with -VaultRoot over stdin (no -ServiceAccount when NEXUS_SERVICE_USERNAME is unset)', () => {
     writeFakeRegistry(); // clone is mocked, so seed what it would have produced
+    process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
+    delete process.env.NEXUS_SERVICE_USERNAME; // explicit, not just relying on afterEach from a prior test
     const calls: ExecCall[] = [];
     mockExec(calls);
 
@@ -243,14 +260,58 @@ describe('installFresh', () => {
     });
   });
 
+  test('passes -ServiceAccount <NEXUS_SERVICE_USERNAME> when set (the default-account case is covered above)', () => {
+    writeFakeRegistry();
+    process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
+    process.env.NEXUS_SERVICE_USERNAME = 'OTHERDOMAIN\\otheruser';
+    const calls: ExecCall[] = [];
+    mockExec(calls);
+
+    nexusInstall.installFresh();
+
+    assert.deepEqual(calls[3], {
+      cmd: 'pwsh',
+      args: [
+        '-File',
+        nexusInstall.SETUP_SCRIPT,
+        '-CleanInstall',
+        '-VaultRoot',
+        VAULT_PATH_ENV,
+        '-ServiceAccount',
+        'OTHERDOMAIN\\otheruser',
+      ],
+      options: { stdio: ['pipe', 'inherit', 'inherit'], input: 'yes\n' },
+    });
+  });
+
   test('clones and trusts the dir before failing fast on elevation, never reaching -CleanInstall', () => {
     writeFakeRegistry();
+    process.env.NEXUS_SERVICE_PASSWORD = 'test-password';
     const calls: ExecCall[] = [];
     mockExec(calls, (call) => {
       if (call.cmd === 'net') throw new Error('not elevated');
     });
 
     assert.throws(() => nexusInstall.installFresh(), /elevated shell/);
+    assert.deepEqual(
+      calls.map((c) => c.cmd),
+      ['git', 'git', 'net']
+    );
+  });
+
+  // Regression test for a live 2026-07-20 failure: without this check,
+  // installFresh fell through to setup-service.ps1's own interactive
+  // Read-Host password prompt, which reads from the same piped stdin already
+  // consumed by -CleanInstall's 'yes\n' confirmation. The prompt silently got
+  // EOF, NSSM installed the service with an empty password, and it failed to
+  // start with a Windows logon failure instead of a clear error here.
+  test('clones, trusts the dir, and elevation-checks before failing fast when NEXUS_SERVICE_PASSWORD is unset, never reaching -CleanInstall', () => {
+    writeFakeRegistry();
+    delete process.env.NEXUS_SERVICE_PASSWORD;
+    const calls: ExecCall[] = [];
+    mockExec(calls);
+
+    assert.throws(() => nexusInstall.installFresh(), /NEXUS_SERVICE_PASSWORD/);
     assert.deepEqual(
       calls.map((c) => c.cmd),
       ['git', 'git', 'net']

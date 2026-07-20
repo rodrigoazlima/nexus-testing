@@ -63,6 +63,30 @@ function assertElevated(): void {
   }
 }
 
+// setup-service.ps1 installs the agent service to run as the invoking
+// Windows account (not LocalSystem) so it can reach a per-user Podman/Docker
+// setup. It takes the account password from -ServicePassword or
+// $env:NEXUS_SERVICE_PASSWORD; absent both, and given an interactive window
+// station, it falls back to `Read-Host -AsSecureString`. That prompt reads
+// from the same stdin pipe this script already uses to answer -CleanInstall's
+// "Type 'yes' to confirm" — by the time it fires, that pipe is at EOF, so it
+// silently resolves to an empty password. NSSM then installs the service
+// with an empty credential, which fails at start with a Windows logon
+// failure (seen live 2026-07-20: service left "Stopped", validation FAILED,
+// no indication in the error that a password was the cause). Failing fast
+// here beats debugging a cryptic pwsh exit code later.
+function assertServicePasswordAvailable(): void {
+  if (!process.env.NEXUS_SERVICE_PASSWORD) {
+    const account = process.env.NEXUS_SERVICE_USERNAME || `${process.env.COMPUTERNAME}\\${process.env.USERNAME}`;
+    throw new Error(
+      `NEXUS_SERVICE_PASSWORD is not set. ${SETUP_SCRIPT} needs it to install the agent service ` +
+        `under ${account} (required for sandboxed vision-agent dispatch to reach Podman/Docker) ` +
+        `without falling back to an interactive password prompt that this script's piped stdin can't ` +
+        `answer. Set NEXUS_SERVICE_PASSWORD=<${account}'s Windows account password> in .env.`
+    );
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -139,12 +163,22 @@ export function installFresh(): void {
 
   console.log(`running clean install (vault: ${VAULT_PATH})`);
   assertElevated();
+  assertServicePasswordAvailable();
   // -CleanInstall gates on an interactive `Read-Host "Type 'yes' to confirm"`
   // with no bypass flag — feed it via stdin so this works non-interactively.
   // -VaultRoot must be explicit: without it setup-service.ps1 defaults to
   // <ProjectRoot>\.knowledge-base, not VAULT_PATH — the daemon would then
   // watch a vault the tests never touch and every test would time out.
-  run('pwsh', ['-File', SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH], 'yes\n');
+  // NEXUS_SERVICE_PASSWORD (if set) reaches setup-service.ps1 via inherited
+  // env — execFileSync passes the full process.env through unless overridden.
+  const args = ['-File', SETUP_SCRIPT, '-CleanInstall', '-VaultRoot', VAULT_PATH];
+  // -ServiceAccount defaults (in setup-service.ps1 itself) to the invoking
+  // user — only pass it when the caller wants the service to run as someone
+  // else. NEXUS_SERVICE_PASSWORD must still be that account's password.
+  if (process.env.NEXUS_SERVICE_USERNAME) {
+    args.push('-ServiceAccount', process.env.NEXUS_SERVICE_USERNAME);
+  }
+  run('pwsh', args, 'yes\n');
 }
 
 // Test-lane schedule: the stock registry ships 900s–86400s agent intervals,
