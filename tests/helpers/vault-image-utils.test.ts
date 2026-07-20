@@ -189,6 +189,92 @@ describe('waitForSlugNote', () => {
     assert.equal(path.basename(result.notePath), 'note.md');
     assert.equal(path.basename(result.imagePath), 'sibling.jpg');
   });
+
+  test('matches the real sibling even when an unrelated new file is a name-suffix of it', async () => {
+    // "orc.jpg" is a suffix of "zzz-orc.jpg" — a pre-fix endsWith() match
+    // would pick "orc.jpg" first (it's alphabetically/insertion-order first)
+    // even though the note's source never mentions it, then discard the note
+    // entirely once "orc.jpg"'s inode fails to match instead of trying the
+    // real candidate. Neither file's inode is captured up front (falls back
+    // to filename-only matching, same as the test above) so the fix is
+    // isolated to the basename-equality change, not the ino path.
+    fs.writeFileSync(path.join(INBOX_DIR, 'orc.jpg'), 'unrelated-bytes'); // decoy, never referenced
+    fs.writeFileSync(path.join(INBOX_DIR, 'zzz-orc.jpg'), 'true-bytes'); // real sibling
+    writeNote('orc-note.md', ['zzz-orc.jpg']);
+
+    const result = await vim.waitForSlugNote('never-existed.jpg', new Set(), new Set(), {
+      timeout: 1000,
+      intervals: [30],
+    });
+
+    assert.equal(path.basename(result.notePath), 'orc-note.md');
+    assert.equal(path.basename(result.imagePath), 'zzz-orc.jpg');
+  });
+
+  test('retries past a note that is still mid-write (malformed YAML) and logs instead of hanging silently', async () => {
+    fs.writeFileSync(path.join(INBOX_DIR, 'original.jpg'), 'original-bytes');
+    const inboxBaseline = new Set<string>();
+    const processingBaseline = new Set<string>();
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg?: unknown) => void logs.push(String(msg));
+
+    try {
+      const pending = vim.waitForSlugNote('original.jpg', inboxBaseline, processingBaseline, {
+        timeout: 2000,
+        intervals: [30],
+      });
+
+      await sleep(15);
+      fs.renameSync(path.join(INBOX_DIR, 'original.jpg'), path.join(INBOX_DIR, 'sibling.jpg'));
+      // Simulate the agent mid-write: an unterminated quoted scalar, as a
+      // partial flush of a buffered write would produce. gray-matter/js-yaml
+      // throws on this (unlike a merely-missing closing `---`, which
+      // gray-matter parses as if there were no frontmatter at all).
+      fs.writeFileSync(path.join(PROCESSING_DIR, 'note.md'), '---\nid: "note\ntags: [scene\n---\n\nbody\n');
+
+      // Give the poller a couple of ticks to observe the broken file.
+      await sleep(90);
+      // Now the agent finishes the write.
+      writeNote('note.md', ['sibling.jpg']);
+
+      const result = await pending;
+      assert.equal(path.basename(result.notePath), 'note.md');
+    } finally {
+      console.log = originalLog;
+    }
+
+    assert.ok(
+      logs.some((l) => l.includes('not readable yet')),
+      `expected a "not readable yet" diagnostic log while the note was mid-write, got: ${JSON.stringify(logs)}`
+    );
+  });
+
+  test('retries past partial frontmatter (empty source) until the agent fills it in', async () => {
+    fs.writeFileSync(path.join(INBOX_DIR, 'original.jpg'), 'original-bytes');
+    const inboxBaseline = new Set<string>();
+    const processingBaseline = new Set<string>();
+
+    const pending = vim.waitForSlugNote('original.jpg', inboxBaseline, processingBaseline, {
+      timeout: 2000,
+      intervals: [30],
+    });
+
+    await sleep(15);
+    fs.renameSync(path.join(INBOX_DIR, 'original.jpg'), path.join(INBOX_DIR, 'sibling.jpg'));
+    // Valid YAML, but source not populated yet — e.g. the agent writes id/tags
+    // first and fills `source` in a second pass.
+    writeNote('note.md', []);
+
+    await sleep(90);
+    // Second pass: source now points at the renamed sibling.
+    writeNote('note.md', ['sibling.jpg']);
+
+    const result = await pending;
+    assert.equal(path.basename(result.notePath), 'note.md');
+    assert.equal(path.basename(result.imagePath), 'sibling.jpg');
+  });
 });
 
 function validData(overrides: Record<string, unknown> = {}) {

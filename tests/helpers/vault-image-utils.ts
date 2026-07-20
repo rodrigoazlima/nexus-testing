@@ -192,13 +192,24 @@ export async function waitForSlugNote(
         let parsed: { data: FrontmatterData; content: string };
         try {
           parsed = await readFrontmatter(notePath);
-        } catch {
-          continue; // note may still be mid-write by the agent
+        } catch (err) {
+          // Note may still be mid-write by the agent (partial YAML) — log
+          // and retry next poll rather than swallowing silently, so a
+          // genuinely corrupt note doesn't read identically to "not written
+          // yet" for the full timeout.
+          console.log(`[waitForSlugNote] "${noteName}" not readable yet (mid-write?): ${(err as Error).message}`);
+          continue;
         }
 
         const sourceList = Array.isArray(parsed.data.source) ? parsed.data.source : [];
+        // Exact basename match, not endsWith: a `renamedCandidates` name that
+        // happens to be a *suffix* of another candidate's name (e.g. "orc.jpg"
+        // vs. "baby-orc.jpg") would otherwise false-match via endsWith even
+        // when the shorter name never appears in source at all — and once
+        // matched, its (wrong) inode fails the disambiguation check below,
+        // discarding the note instead of trying the real candidate.
         let matchedImage = renamedCandidates.find((candidate) =>
-          sourceList.some((src) => src.endsWith(candidate))
+          sourceList.some((src) => path.basename(src) === candidate)
         );
 
         // Disambiguate cross-matches from concurrent specs: a filename hit

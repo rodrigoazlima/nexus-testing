@@ -63,6 +63,53 @@ function assertElevated(): void {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// vision-agent dispatch is sandboxed (agents.vision.sandbox.enabled in the
+// daemon's registry.yaml) and hard-requires a live container runtime before
+// it processes anything — see docs/dev-feedback/03-vision-agent-sandbox-
+// runtime-missing.md. Checking `<cmd> info`, not just PATH presence, catches
+// the failure mode actually seen live: podman installed but its WSL machine
+// not yet started ("podman info failed (exit 125): Cannot connect to
+// Podman"), which looks identical to a dead pipeline from the test side
+// (waitForSlugNote timing out at the full 10min POLL_TIMEOUT_MS) but is
+// diagnosable in under a second here instead.
+//
+// Retries across attempts (not just across podman/docker within one attempt):
+// a machine that's mid-boot when this check fires — e.g. `podman machine
+// start` was run seconds ago — flaps from unreachable to reachable within a
+// few seconds. A single-shot check would false-negative and fail the whole
+// run over a timing race, not a real absence of the runtime.
+export async function assertSandboxRuntimeAvailable(
+  opts: { attempts?: number; delayMs?: number } = {}
+): Promise<void> {
+  const attempts = opts.attempts ?? 3;
+  const delayMs = opts.delayMs ?? 1000;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    for (const cmd of ['podman', 'docker']) {
+      try {
+        execFileSync(cmd, ['info'], { stdio: 'ignore' });
+        console.log(
+          `[global-setup] sandbox runtime OK: \`${cmd} info\` succeeded` +
+            (attempt > 1 ? ` (attempt ${attempt}/${attempts})` : '')
+        );
+        return;
+      } catch {
+        // try the next candidate, or the next attempt once both fail
+      }
+    }
+    if (attempt < attempts) await sleep(delayMs);
+  }
+  throw new Error(
+    `No working container runtime found after ${attempts} attempts ` +
+      '(checked: `podman info`, `docker info`). vision-agent dispatch is sandboxed and ' +
+      'will fail every cycle without one, silently timing out every spec that waits on it. ' +
+      'Start Podman (`podman machine start`) or Docker Desktop before running tests.'
+  );
+}
+
 /** Uninstalls the service (if present) and wipes the codebase dir. */
 export function clearInstall(): void {
   if (fs.existsSync(SETUP_SCRIPT)) {

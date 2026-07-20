@@ -148,6 +148,62 @@ describe('clearInstall', () => {
   });
 });
 
+describe('assertSandboxRuntimeAvailable', () => {
+  test('succeeds on `podman info` without trying docker or retrying', async () => {
+    const calls: ExecCall[] = [];
+    mockExec(calls);
+
+    await assert.doesNotReject(() => nexusInstall.assertSandboxRuntimeAvailable({ delayMs: 5 }));
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0], { cmd: 'podman', args: ['info'], options: { stdio: 'ignore' } });
+  });
+
+  test('falls back to `docker info` when podman fails', async () => {
+    const calls: ExecCall[] = [];
+    mockExec(calls, (call) => {
+      if (call.cmd === 'podman') throw new Error('podman info failed (exit 125)');
+    });
+
+    await assert.doesNotReject(() => nexusInstall.assertSandboxRuntimeAvailable({ delayMs: 5 }));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].cmd, 'podman');
+    assert.equal(calls[1].cmd, 'docker');
+  });
+
+  test('throws a clear error naming the attempt count when neither runtime is ever reachable', async () => {
+    const calls: ExecCall[] = [];
+    mockExec(calls, () => {
+      throw new Error('not reachable');
+    });
+
+    await assert.rejects(
+      () => nexusInstall.assertSandboxRuntimeAvailable({ attempts: 2, delayMs: 5 }),
+      /No working container runtime found after 2 attempts/
+    );
+    // 2 attempts x 2 candidates (podman, docker) each.
+    assert.equal(calls.length, 4);
+  });
+
+  // The scenario reported live: podman machine mid-boot (`podman machine
+  // start` just run) — `podman info` fails on the first attempt, then
+  // succeeds once the WSL VM finishes coming up a moment later. A
+  // single-shot check would wrongly hard-fail the whole run over this.
+  test('recovers from a flapping runtime — fails once, then succeeds on a later attempt', async () => {
+    const calls: ExecCall[] = [];
+    let podmanCallCount = 0;
+    mockExec(calls, (call) => {
+      if (call.cmd === 'podman') {
+        podmanCallCount++;
+        if (podmanCallCount < 3) throw new Error('podman info failed (exit 125): Cannot connect to Podman');
+      }
+      if (call.cmd === 'docker') throw new Error('docker not installed');
+    });
+
+    await assert.doesNotReject(() => nexusInstall.assertSandboxRuntimeAvailable({ attempts: 5, delayMs: 5 }));
+    assert.equal(podmanCallCount, 3);
+  });
+});
+
 describe('installFresh', () => {
   test('clones, trusts the dir, elevation-checks, then runs -CleanInstall with -VaultRoot over stdin', () => {
     writeFakeRegistry(); // clone is mocked, so seed what it would have produced
